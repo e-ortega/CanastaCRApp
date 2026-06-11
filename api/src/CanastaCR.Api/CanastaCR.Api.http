@@ -1,0 +1,6 @@
+@CanastaCR.Api_HostAddress = http://localhost:5098
+
+GET {{CanastaCR.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

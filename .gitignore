@@ -1,0 +1,35 @@
+# ── .NET / ASP.NET Core ──────────────────────────────────────
+.env
+[Dd]ebug/
+[Rr]elease/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+.vs/
+*.user
+*.suo
+TestResults/
+coverage*.xml
+coverage*.json
+coverage*.info
+*.pubxml
+PublishScripts/
+artifacts/
+
+# ── Flutter / Dart ───────────────────────────────────────────
+**/doc/api/
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+app/build/
+app/coverage/
+
+# ── OS / editors ─────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+*.code-workspace
+.history/
+*.swp
