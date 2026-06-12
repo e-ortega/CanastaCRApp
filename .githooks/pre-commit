@@ -1,0 +1,43 @@
+#!/bin/bash
+# Pre-commit hook — runs tests for staged api/ and app/ changes.
+# Install once with: .\scripts\run.ps1 hooks:install
+
+ROOT=$(git rev-parse --show-toplevel)
+STAGED=$(git diff --cached --name-only)
+
+RUN_API=false
+RUN_APP=false
+
+for file in $STAGED; do
+  case "$file" in api/*) RUN_API=true ;; esac
+  case "$file" in app/*) RUN_APP=true ;; esac
+done
+
+if [ "$RUN_API" = true ]; then
+  echo "▶ API tests (pre-commit)..."
+  powershell.exe -NonInteractive -File "$ROOT/scripts/run.ps1" api:test
+  if [ $? -ne 0 ]; then
+    echo "❌ API tests failed — commit blocked. Fix failures and retry."
+    exit 1
+  fi
+  echo "✓ API tests passed"
+fi
+
+if [ "$RUN_APP" = true ]; then
+  echo "▶ Flutter analyze (pre-commit)..."
+  powershell.exe -NonInteractive -File "$ROOT/scripts/run.ps1" app:analyze
+  if [ $? -ne 0 ]; then
+    echo "❌ Flutter analyze failed — commit blocked."
+    exit 1
+  fi
+
+  echo "▶ Flutter tests (pre-commit)..."
+  powershell.exe -NonInteractive -File "$ROOT/scripts/run.ps1" app:test
+  if [ $? -ne 0 ]; then
+    echo "❌ Flutter tests failed — commit blocked."
+    exit 1
+  fi
+  echo "✓ Flutter tests passed"
+fi
+
+exit 0

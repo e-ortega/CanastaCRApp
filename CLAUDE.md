@@ -417,6 +417,12 @@ Deploy step runs: `dotnet ef database update` against production PostgreSQL conn
 
 ## Always do in this project
 
+### One-time setup (after cloning)
+```powershell
+.\scripts\run.ps1 hooks:install
+# Activates .githooks/pre-commit — tests run automatically on every git commit.
+```
+
 ### MANDATORY before any commit touching `api/`
 ```powershell
 .\scripts\run.ps1 api:test

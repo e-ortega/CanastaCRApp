@@ -162,6 +162,19 @@ switch ($Command) {
         az resource delete --ids $ResourceId
     }
 
+    # ── Git hooks ─────────────────────────────────────────────────────────
+    'hooks:install' {
+        Write-Host "▶ Installing git hooks from .githooks/" -ForegroundColor Cyan
+        git config core.hooksPath .githooks
+        Write-Host "✓ Hooks active — tests will run automatically before each commit" -ForegroundColor Green
+    }
+
+    'hooks:uninstall' {
+        Write-Host "▶ Removing git hooks" -ForegroundColor Yellow
+        git config --unset core.hooksPath
+        Write-Host "✓ Hooks removed" -ForegroundColor Green
+    }
+
     # ── Combined ──────────────────────────────────────────────────────────
     'test' {
         Write-Host "▶ Running all tests (backend + Flutter)" -ForegroundColor Cyan
@@ -198,6 +211,10 @@ switch ($Command) {
         Write-Host "    infra:delete           Delete entire resource group (irreversible)"
         Write-Host "    infra:delete-resource  Delete a single resource by ID"
         Write-Host "    log:tail               Stream live API logs from Azure"
+        Write-Host ""
+        Write-Host "  Git hooks" -ForegroundColor Yellow
+        Write-Host "    hooks:install    Activate pre-commit test enforcement"
+        Write-Host "    hooks:uninstall  Remove hooks"
         Write-Host ""
         Write-Host "  Combined" -ForegroundColor Yellow
         Write-Host "    test          Run backend + Flutter tests"

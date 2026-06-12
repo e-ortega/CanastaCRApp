@@ -124,6 +124,13 @@ Set these once as Windows user environment variables (persist across terminals):
 
 Restart your terminal after setting these.
 
+### One-time setup (after cloning)
+
+```powershell
+# Activate pre-commit hook — blocks commits if tests fail
+.\scripts\run.ps1 hooks:install
+```
+
 ### Quick start
 
 ```powershell
