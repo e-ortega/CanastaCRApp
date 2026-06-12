@@ -13,5 +13,5 @@ fi
 
 echo "CLAUDE.md changed — syncing GitHub Issues..."
 
-powershell.exe -NonInteractive -File "$ROOT/scripts/sync-issues.ps1" -Quiet
-powershell.exe -NonInteractive -File "$ROOT/scripts/close-issues.ps1"
+pwsh -NonInteractive -File "$ROOT/scripts/sync-issues.ps1" -Quiet
+pwsh -NonInteractive -File "$ROOT/scripts/close-issues.ps1"

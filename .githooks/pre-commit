@@ -15,7 +15,7 @@ done
 
 if [ "$RUN_API" = true ]; then
   echo "▶ API tests (pre-commit)..."
-  powershell.exe -NonInteractive -File "$ROOT/scripts/run.ps1" api:test
+  pwsh -NonInteractive -File "$ROOT/scripts/run.ps1" api:test
   if [ $? -ne 0 ]; then
     echo "❌ API tests failed — commit blocked. Fix failures and retry."
     exit 1
@@ -25,14 +25,14 @@ fi
 
 if [ "$RUN_APP" = true ]; then
   echo "▶ Flutter analyze (pre-commit)..."
-  powershell.exe -NonInteractive -File "$ROOT/scripts/run.ps1" app:analyze
+  pwsh -NonInteractive -File "$ROOT/scripts/run.ps1" app:analyze
   if [ $? -ne 0 ]; then
     echo "❌ Flutter analyze failed — commit blocked."
     exit 1
   fi
 
   echo "▶ Flutter tests (pre-commit)..."
-  powershell.exe -NonInteractive -File "$ROOT/scripts/run.ps1" app:test
+  pwsh -NonInteractive -File "$ROOT/scripts/run.ps1" app:test
   if [ $? -ne 0 ]; then
     echo "❌ Flutter tests failed — commit blocked."
     exit 1
