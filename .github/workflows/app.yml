@@ -1,12 +1,6 @@
 name: Flutter app — test, build, deploy
 
 on:
-  push:
-    branches: [main]
-    paths: ['app/**']
-  pull_request:
-    branches: [main]
-    paths: ['app/**']
   workflow_dispatch:
 
 permissions:
@@ -44,7 +38,7 @@ jobs:
   deploy:
     name: Build web & deploy to Static Web Apps
     needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: always() && needs.test.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

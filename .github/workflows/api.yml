@@ -1,12 +1,7 @@
 name: API — build, test, deploy
 
 on:
-  push:
-    branches: [main]
-    paths: ['api/**']
-  pull_request:
-    branches: [main]
-    paths: ['api/**']
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -48,7 +43,7 @@ jobs:
   deploy:
     name: Deploy to Azure
     needs: build-and-test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: always() && needs.build-and-test.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
