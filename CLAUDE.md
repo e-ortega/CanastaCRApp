@@ -353,11 +353,10 @@ Each ShoppingService test calls `SeedBase()` → creates named in-memory DB → 
 - [x] Monorepo pushed to GitHub (e-ortega/CanastaCRApp)
 - [x] Deploy to Azure (Canada Central — App Service B1 + PostgreSQL B1ms + SWA Free)
 - [x] GitHub Actions CI/CD (manual trigger — api.yml, app.yml, infra.yml)
-- [ ] Open Food Facts barcode integration (scaffolded in API, not wired to Flutter UI yet)
-
 ### Phase 2 — Mobile (iOS) + richer features
 - [ ] Flutter iOS build + TestFlight
 - [ ] Barcode scanner (`mobile_scanner` package)
+- [ ] Open Food Facts barcode integration (API scaffolded — wire to Flutter barcode scanner UI)
 - [ ] Price tag OCR (photo → Azure Computer Vision → parse → user confirms)
 - [ ] Receipt scan flow (bulk price submission + auto-update pantry)
 - [ ] GPS store auto-detection (suggest nearest store when submitting price)
