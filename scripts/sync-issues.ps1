@@ -6,8 +6,9 @@
 .EXAMPLE
   .\scripts\sync-issues.ps1
   .\scripts\sync-issues.ps1 -DryRun
+  .\scripts\sync-issues.ps1 -Quiet   # suppress "skip" lines (used by post-commit hook)
 #>
-param([switch]$DryRun)
+param([switch]$DryRun, [switch]$Quiet)
 
 $Repo   = 'e-ortega/CanastaCRApp'
 $Claude = Join-Path $PSScriptRoot '..\CLAUDE.md'
@@ -54,7 +55,7 @@ $existing = gh issue list --repo $Repo --state open --limit 200 --json title | C
 $created = 0
 foreach ($item in $items) {
     if ($existing -contains $item.title) {
-        Write-Host "  skip (exists): $($item.title)" -ForegroundColor DarkGray
+        if (-not $Quiet) { Write-Host "  skip (exists): $($item.title)" -ForegroundColor DarkGray }
         continue
     }
 

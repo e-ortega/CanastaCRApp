@@ -1,0 +1,17 @@
+#!/bin/bash
+# Post-commit hook — syncs CLAUDE.md phase items with GitHub Issues.
+# - Creates issues for any new unchecked items added to Phase 2/3
+# - Closes issues for items that were just checked off ([ ] → [x])
+
+ROOT=$(git rev-parse --show-toplevel)
+
+# Only run if CLAUDE.md was part of this commit
+CHANGED=$(git diff-tree --no-commit-id -r HEAD --name-only | grep "^CLAUDE.md$")
+if [ -z "$CHANGED" ]; then
+  exit 0
+fi
+
+echo "CLAUDE.md changed — syncing GitHub Issues..."
+
+powershell.exe -NonInteractive -File "$ROOT/scripts/sync-issues.ps1" -Quiet
+powershell.exe -NonInteractive -File "$ROOT/scripts/close-issues.ps1"
