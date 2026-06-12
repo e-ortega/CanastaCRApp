@@ -270,7 +270,7 @@ interface IStoreScraper {
 ```bash
 cd api
 dotnet run --project src/CanastaCR.Api
-# Swagger UI: https://localhost:7001/swagger
+# Swagger UI: https://localhost:7068/swagger
 # Seed data loads automatically on first run (15 products, prices at all 5 chains)
 # Dev credentials: admin@canastacr.com / admin123
 ```
