@@ -126,6 +126,42 @@ switch ($Command) {
         az webapp log tail --name canastacr-api-prod --resource-group canastacr-rg
     }
 
+    'infra:stop' {
+        Write-Host "▶ Stopping Azure resources (saves ~$13/mo)" -ForegroundColor Yellow
+        az webapp stop  --name canastacr-api-prod --resource-group canastacr-rg
+        az postgres flexible-server stop --name canastacr-db-prod --resource-group canastacr-rg
+        Write-Host "✓ App Service and PostgreSQL stopped" -ForegroundColor Green
+    }
+
+    'infra:start' {
+        Write-Host "▶ Starting Azure resources" -ForegroundColor Cyan
+        az webapp start --name canastacr-api-prod --resource-group canastacr-rg
+        az postgres flexible-server start --name canastacr-db-prod --resource-group canastacr-rg
+        Write-Host "✓ App Service and PostgreSQL started" -ForegroundColor Green
+    }
+
+    'infra:delete' {
+        $Rg = $env:AZURE_RESOURCE_GROUP ?? 'canastacr-rg'
+        Write-Host "⚠ This will permanently delete resource group '$Rg' and ALL resources inside it." -ForegroundColor Red
+        $confirm = Read-Host "Type the resource group name to confirm"
+        if ($confirm -ne $Rg) { Write-Host "Aborted." -ForegroundColor Yellow; exit 0 }
+        az group delete --name $Rg --yes --no-wait
+        Write-Host "✓ Deletion triggered (runs in background, takes ~2 min)" -ForegroundColor Green
+    }
+
+    'infra:delete-resource' {
+        param([string]$ResourceId)
+        if (-not $ResourceId) {
+            Write-Host "Usage: .\run.ps1 infra:delete-resource --ResourceId <resource-id-or-name>" -ForegroundColor Yellow
+            Write-Host "Get IDs with: az resource list --resource-group canastacr-rg --output table" -ForegroundColor DarkGray
+            exit 1
+        }
+        Write-Host "⚠ Deleting resource: $ResourceId" -ForegroundColor Red
+        $confirm = Read-Host "Confirm? (yes/no)"
+        if ($confirm -ne 'yes') { Write-Host "Aborted." -ForegroundColor Yellow; exit 0 }
+        az resource delete --ids $ResourceId
+    }
+
     # ── Combined ──────────────────────────────────────────────────────────
     'test' {
         Write-Host "▶ Running all tests (backend + Flutter)" -ForegroundColor Cyan
@@ -154,10 +190,14 @@ switch ($Command) {
         Write-Host "    app:analyze   flutter analyze"
         Write-Host ""
         Write-Host "  Infrastructure" -ForegroundColor Yellow
-        Write-Host "    infra:validate  Validate Bicep (no deploy)"
-        Write-Host "    infra:deploy    Deploy to Azure (needs env vars)"
-        Write-Host "    infra:outputs   Show last deployment outputs"
-        Write-Host "    log:tail        Stream live API logs from Azure"
+        Write-Host "    infra:validate         Validate Bicep (no deploy)"
+        Write-Host "    infra:deploy           Deploy to Azure (needs env vars)"
+        Write-Host "    infra:outputs          Show last deployment outputs"
+        Write-Host "    infra:stop             Stop App Service + PostgreSQL (save cost)"
+        Write-Host "    infra:start            Start App Service + PostgreSQL"
+        Write-Host "    infra:delete           Delete entire resource group (irreversible)"
+        Write-Host "    infra:delete-resource  Delete a single resource by ID"
+        Write-Host "    log:tail               Stream live API logs from Azure"
         Write-Host ""
         Write-Host "  Combined" -ForegroundColor Yellow
         Write-Host "    test          Run backend + Flutter tests"

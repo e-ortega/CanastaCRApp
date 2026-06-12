@@ -340,7 +340,7 @@ Each ShoppingService test calls `SeedBase()` → creates named in-memory DB → 
 
 ## Phase status
 
-### Phase 1 — Web POC ✅ COMPLETE (2026-06-11)
+### Phase 1 — Web POC ✅ COMPLETE (2026-06-12)
 - [x] .NET API: Products, Stores, PriceReports CRUD
 - [x] Seed DB with 15 common CR products + all 5 store chains (10 locations)
 - [x] Flutter Web: product search, price comparison table, manual price submission
@@ -351,9 +351,9 @@ Each ShoppingService test calls `SeedBase()` → creates named in-memory DB → 
 - [x] Manual product creation (search screen + sheet)
 - [x] 28 backend unit tests + 30 Flutter unit tests — all passing
 - [x] Monorepo pushed to GitHub (e-ortega/CanastaCRApp)
-- [ ] **Deploy to Azure** (next step)
-- [ ] **GitHub Actions CI/CD** (next step)
-- [ ] Open Food Facts barcode integration (scaffolded, not wired to UI yet)
+- [x] Deploy to Azure (Canada Central — App Service B1 + PostgreSQL B1ms + SWA Free)
+- [x] GitHub Actions CI/CD (manual trigger — api.yml, app.yml, infra.yml)
+- [ ] Open Food Facts barcode integration (scaffolded in API, not wired to Flutter UI yet)
 
 ### Phase 2 — Mobile (iOS) + richer features
 - [ ] Flutter iOS build + TestFlight
@@ -376,7 +376,7 @@ Each ShoppingService test calls `SeedBase()` → creates named in-memory DB → 
 
 ---
 
-## Azure deployment plan (PENDING)
+## Azure deployment (LIVE)
 
 ### Resources (~$28/mo total)
 | Resource | SKU | Cost |
