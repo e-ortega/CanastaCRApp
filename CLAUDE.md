@@ -417,8 +417,21 @@ Deploy step runs: `dotnet ef database update` against production PostgreSQL conn
 ---
 
 ## Always do in this project
-- `dotnet test` before committing backend changes
-- `flutter test test/models/` before committing Flutter changes
+
+### MANDATORY before any commit touching `api/`
+```powershell
+.\scripts\run.ps1 api:test
+# All 28 tests must pass. Do not commit if any test fails.
+```
+
+### MANDATORY before any commit touching `app/`
+```powershell
+.\scripts\run.ps1 app:analyze
+.\scripts\run.ps1 app:test
+# 0 lint issues, all 30 tests must pass. Do not commit if either fails.
+```
+
+### Other rules
 - Keep `SeedSampleData()` in `Program.cs` idempotent (`if (await db.Products.AnyAsync()) return;`)
 - API DTO changes must be reflected in Flutter models (`app/lib/core/models/`)
 - New API endpoints need the corresponding Flutter API client call in `api_client.dart`
