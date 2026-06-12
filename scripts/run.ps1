@@ -121,6 +121,11 @@ switch ($Command) {
             --query "[0].properties.outputs" -o json
     }
 
+    'log:tail' {
+        Write-Host "▶ Streaming API logs (Ctrl+C to stop)" -ForegroundColor Cyan
+        az webapp log tail --name canastacr-api-prod --resource-group canastacr-rg
+    }
+
     # ── Combined ──────────────────────────────────────────────────────────
     'test' {
         Write-Host "▶ Running all tests (backend + Flutter)" -ForegroundColor Cyan
@@ -152,6 +157,7 @@ switch ($Command) {
         Write-Host "    infra:validate  Validate Bicep (no deploy)"
         Write-Host "    infra:deploy    Deploy to Azure (needs env vars)"
         Write-Host "    infra:outputs   Show last deployment outputs"
+        Write-Host "    log:tail        Stream live API logs from Azure"
         Write-Host ""
         Write-Host "  Combined" -ForegroundColor Yellow
         Write-Host "    test          Run backend + Flutter tests"
