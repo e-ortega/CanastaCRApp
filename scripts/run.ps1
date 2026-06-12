@@ -5,11 +5,14 @@
   .\scripts\run.ps1 api              # run API in watch mode
   .\scripts\run.ps1 api:build        # build API (Release)
   .\scripts\run.ps1 api:test         # run all backend tests
+  .\scripts\run.ps1 api:coverage     # run backend tests + generate coverage (Cobertura)
   .\scripts\run.ps1 app              # run Flutter app in Chrome
   .\scripts\run.ps1 app:build        # flutter build web (Release)
   .\scripts\run.ps1 app:test         # run Flutter unit tests
+  .\scripts\run.ps1 app:coverage     # run Flutter tests + generate coverage (lcov)
   .\scripts\run.ps1 infra:validate   # validate Bicep without deploying
   .\scripts\run.ps1 infra:deploy     # deploy Bicep to Azure (prod)
+  .\scripts\run.ps1 coverage         # generate coverage for both (api + app)
   .\scripts\run.ps1 help             # show this list
 #>
 param([string]$Command = 'help')
@@ -21,7 +24,7 @@ $ApiSln  = Join-Path $Root 'api'
 $AppDir  = Join-Path $Root 'app'
 $InfraDir= Join-Path $Root 'infra'
 
-function Require-EnvVar([string]$Name) {
+function Assert-EnvVar([string]$Name) {
     if (-not (Get-Item "env:$Name" -ErrorAction SilentlyContinue)) {
         Write-Error "Missing env var: $Name — set it before running this command."
         exit 1
@@ -49,6 +52,24 @@ switch ($Command) {
     'api:test' {
         Write-Host "▶ Running backend tests" -ForegroundColor Cyan
         dotnet test "$ApiSln\tests\CanastaCR.Tests" --logger "console;verbosity=normal"
+    }
+
+    'api:coverage' {
+        Write-Host "▶ Running backend tests with coverage" -ForegroundColor Cyan
+        $CoverageDir = "$ApiSln\coverage"
+        dotnet test "$ApiSln\tests\CanastaCR.Tests" `
+            --collect:"XPlat Code Coverage" `
+            --results-directory "$CoverageDir\raw" `
+            --logger "console;verbosity=normal"
+        # Flatten GUID subfolder → stable path for Coverage Gutters
+        $xml = Get-ChildItem "$CoverageDir\raw" -Recurse -Filter "coverage.cobertura.xml" |
+               Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if ($xml) {
+            Copy-Item $xml.FullName "$CoverageDir\cobertura.xml" -Force
+            Write-Host ""
+            Write-Host "✓ Coverage report: api/coverage/cobertura.xml" -ForegroundColor Green
+            Write-Host "  In VSCode: Coverage Gutters → Display Coverage (Ctrl+Shift+P)" -ForegroundColor DarkGray
+        }
     }
 
     'api:publish' {
@@ -79,6 +100,18 @@ switch ($Command) {
         Pop-Location
     }
 
+    'app:coverage' {
+        Write-Host "▶ Running Flutter tests with coverage" -ForegroundColor Cyan
+        Push-Location $AppDir
+        & $Flutter test --coverage test/models/
+        Pop-Location
+        if (Test-Path "$AppDir\coverage\lcov.info") {
+            Write-Host ""
+            Write-Host "✓ Coverage report: app/coverage/lcov.info" -ForegroundColor Green
+            Write-Host "  In VSCode: Coverage Gutters → Display Coverage (Ctrl+Shift+P)" -ForegroundColor DarkGray
+        }
+    }
+
     'app:analyze' {
         Write-Host "▶ Flutter analyze" -ForegroundColor Cyan
         Push-Location $AppDir
@@ -89,9 +122,9 @@ switch ($Command) {
     # ── Infrastructure ────────────────────────────────────────────────────
     'infra:validate' {
         Write-Host "▶ Validating Bicep (no deploy)" -ForegroundColor Cyan
-        Require-EnvVar 'AZURE_RESOURCE_GROUP'
-        Require-EnvVar 'POSTGRES_ADMIN_PASSWORD'
-        Require-EnvVar 'JWT_SECRET'
+        Assert-EnvVar 'AZURE_RESOURCE_GROUP'
+        Assert-EnvVar 'POSTGRES_ADMIN_PASSWORD'
+        Assert-EnvVar 'JWT_SECRET'
         az deployment group validate `
             --resource-group $env:AZURE_RESOURCE_GROUP `
             --template-file "$InfraDir\main.bicep" `
@@ -100,9 +133,9 @@ switch ($Command) {
 
     'infra:deploy' {
         Write-Host "▶ Deploying infra to Azure (prod)" -ForegroundColor Yellow
-        Require-EnvVar 'AZURE_RESOURCE_GROUP'
-        Require-EnvVar 'POSTGRES_ADMIN_PASSWORD'
-        Require-EnvVar 'JWT_SECRET'
+        Assert-EnvVar 'AZURE_RESOURCE_GROUP'
+        Assert-EnvVar 'POSTGRES_ADMIN_PASSWORD'
+        Assert-EnvVar 'JWT_SECRET'
         $RunName = "manual-$(Get-Date -Format 'yyyyMMdd-HHmm')"
         $RgLocation = $env:AZURE_LOCATION ?? 'canadacentral'
         az group create --name $env:AZURE_RESOURCE_GROUP --location $RgLocation
@@ -115,7 +148,7 @@ switch ($Command) {
 
     'infra:outputs' {
         Write-Host "▶ Showing last deployment outputs" -ForegroundColor Cyan
-        Require-EnvVar 'AZURE_RESOURCE_GROUP'
+        Assert-EnvVar 'AZURE_RESOURCE_GROUP'
         az deployment group list `
             --resource-group $env:AZURE_RESOURCE_GROUP `
             --query "[0].properties.outputs" -o json
@@ -184,6 +217,28 @@ switch ($Command) {
         Pop-Location
     }
 
+    'coverage' {
+        Write-Host "▶ Generating coverage for backend + Flutter" -ForegroundColor Cyan
+        # Backend
+        $CoverageDir = "$ApiSln\coverage"
+        dotnet test "$ApiSln\tests\CanastaCR.Tests" `
+            --collect:"XPlat Code Coverage" `
+            --results-directory "$CoverageDir\raw" `
+            --logger "console;verbosity=normal"
+        $xml = Get-ChildItem "$CoverageDir\raw" -Recurse -Filter "coverage.cobertura.xml" |
+               Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if ($xml) { Copy-Item $xml.FullName "$CoverageDir\coverage.cobertura.xml" -Force }
+        # Flutter
+        Push-Location $AppDir
+        & $Flutter test --coverage test/models/
+        Pop-Location
+        Write-Host ""
+        Write-Host "✓ Coverage files ready:" -ForegroundColor Green
+        Write-Host "    api/coverage/coverage.cobertura.xml" -ForegroundColor White
+        Write-Host "    app/coverage/lcov.info" -ForegroundColor White
+        Write-Host "  In VSCode: Coverage Gutters → Display Coverage (Ctrl+Shift+P)" -ForegroundColor DarkGray
+    }
+
     # ── Help ──────────────────────────────────────────────────────────────
     default {
         Write-Host ""
@@ -194,12 +249,14 @@ switch ($Command) {
         Write-Host "    api:watch     Run API with hot-reload"
         Write-Host "    api:build     Build Release"
         Write-Host "    api:test      Run xUnit tests (28)"
+        Write-Host "    api:coverage  Run tests + write api/coverage/coverage.cobertura.xml"
         Write-Host "    api:publish   Publish to api/publish/"
         Write-Host ""
         Write-Host "  Flutter" -ForegroundColor Yellow
         Write-Host "    app           Run in Chrome"
         Write-Host "    app:build     flutter build web --release"
         Write-Host "    app:test      Run unit tests (30)"
+        Write-Host "    app:coverage  Run tests + write app/coverage/lcov.info"
         Write-Host "    app:analyze   flutter analyze"
         Write-Host ""
         Write-Host "  Infrastructure" -ForegroundColor Yellow
@@ -218,6 +275,7 @@ switch ($Command) {
         Write-Host ""
         Write-Host "  Combined" -ForegroundColor Yellow
         Write-Host "    test          Run backend + Flutter tests"
+        Write-Host "    coverage      Run both + write coverage files for Coverage Gutters"
         Write-Host ""
         Write-Host "  Env vars for infra commands:" -ForegroundColor DarkGray
         Write-Host "    `$env:AZURE_RESOURCE_GROUP   = 'canastacr-rg'"

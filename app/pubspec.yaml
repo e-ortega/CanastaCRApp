@@ -39,6 +39,7 @@ dependencies:
   flutter_secure_storage: ^10.3.1
   shared_preferences: ^2.5.5
   provider: ^6.1.5+1
+  mobile_scanner: ^6.0.0
 
 dev_dependencies:
   flutter_test:

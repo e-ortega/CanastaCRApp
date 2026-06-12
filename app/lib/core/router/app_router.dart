@@ -8,6 +8,7 @@ import '../../features/search/screens/home_screen.dart';
 import '../../features/search/screens/search_screen.dart';
 import '../../features/shopping/screens/optimize_screen.dart';
 import '../../features/shopping/screens/shopping_list_detail_screen.dart';
+import '../../features/search/screens/barcode_scanner_screen.dart';
 import '../../features/shopping/screens/shopping_lists_screen.dart';
 import '../../shared/widgets/main_scaffold.dart';
 
@@ -23,6 +24,7 @@ GoRouter buildRouter(AuthProvider auth) => GoRouter(
       routes: [
         GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
         GoRoute(path: '/register', builder: (_, _) => const RegisterScreen()),
+        GoRoute(path: '/scanner', builder: (_, _) => const BarcodeScannerScreen()),
         ShellRoute(
           builder: (context, state, child) => MainScaffold(child: child),
           routes: [

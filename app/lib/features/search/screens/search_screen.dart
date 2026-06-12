@@ -76,6 +76,11 @@ class _SearchScreenState extends State<SearchScreen> {
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.qr_code_scanner, color: Colors.white),
+            tooltip: 'Escanear código de barras',
+            onPressed: () => context.push('/scanner'),
+          ),
+          IconButton(
             icon: const Icon(Icons.add_circle_outline, color: Colors.white),
             tooltip: 'Agregar producto',
             onPressed: _showAddProduct,
