@@ -417,16 +417,24 @@ Deploy step runs: `dotnet ef database update` against production PostgreSQL conn
 
 ## Always do in this project
 
-### One-time setup (after cloning)
+### MANDATORY — one-time setup after cloning
 ```powershell
 .\scripts\run.ps1 hooks:install
-# Activates .githooks/pre-commit — tests run automatically on every git commit.
 ```
+**Do not skip this.** It activates two git hooks stored in `.githooks/`:
+
+| Hook | When it runs | What it does |
+|---|---|---|
+| `pre-commit` | Before every `git commit` | Runs `api:test` if `api/` is staged; runs `app:analyze` + `app:test` if `app/` is staged. Blocks the commit if anything fails. |
+| `post-commit` | After every `git commit` | If `CLAUDE.md` was committed: creates GitHub Issues for any new `- [ ]` items added to Phase 2/3; closes GitHub Issues for any items changed to `- [x]`. |
+
+To disable: `.\scripts\run.ps1 hooks:uninstall`
 
 ### MANDATORY before any commit touching `api/`
 ```powershell
 .\scripts\run.ps1 api:test
 # All 28 tests must pass. Do not commit if any test fails.
+# (Enforced automatically by pre-commit hook if hooks:install was run.)
 ```
 
 ### MANDATORY before any commit touching `app/`
@@ -434,6 +442,7 @@ Deploy step runs: `dotnet ef database update` against production PostgreSQL conn
 .\scripts\run.ps1 app:analyze
 .\scripts\run.ps1 app:test
 # 0 lint issues, all 30 tests must pass. Do not commit if either fails.
+# (Enforced automatically by pre-commit hook if hooks:install was run.)
 ```
 
 ### Other rules

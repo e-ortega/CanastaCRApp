@@ -127,9 +127,22 @@ Restart your terminal after setting these.
 ### One-time setup (after cloning)
 
 ```powershell
-# Activate pre-commit hook — blocks commits if tests fail
 .\scripts\run.ps1 hooks:install
 ```
+
+This activates two git hooks from `.githooks/`:
+
+**`pre-commit`** — runs before every `git commit`:
+- Staged files under `api/` → runs `api:test` (28 tests must pass)
+- Staged files under `app/` → runs `app:analyze` + `app:test` (0 lint issues, 30 tests must pass)
+- Blocks the commit with a clear error if anything fails
+- Skips entirely if neither `api/` nor `app/` files are staged
+
+**`post-commit`** — runs after every `git commit` that includes `CLAUDE.md`:
+- Finds new `- [ ]` items added to Phase 2/3 → creates GitHub Issues automatically
+- Finds items changed to `- [x]` → closes matching GitHub Issues with a link to the commit
+
+To disable hooks: `.\scripts\run.ps1 hooks:uninstall`
 
 ### Quick start
 
@@ -191,6 +204,10 @@ Single entry point for all common tasks. Usage: `.\scripts\run.ps1 <command>`
 ---
 
 ## Scripts
+
+### `scripts/run.ps1 hooks:install` / `hooks:uninstall`
+
+Activates or deactivates the git hooks in `.githooks/`. Run once after cloning — see [One-time setup](#one-time-setup-after-cloning) above for full details.
 
 ### `scripts/check-region.ps1`
 
