@@ -62,7 +62,6 @@ module appservice 'modules/appservice.bicep' = {
     postgresAdminPassword: administratorLoginPassword
     appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
   }
-  dependsOn: [keyvault, postgres, monitoring]
 }
 
 module staticwebapp 'modules/staticwebapp.bicep' = {

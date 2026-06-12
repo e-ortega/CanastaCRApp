@@ -10,5 +10,5 @@ resource staticWebApp 'Microsoft.Web/staticSites@2023-12-01' = {
 
 output defaultHostname string = staticWebApp.properties.defaultHostname
 output resourceId string = staticWebApp.id
-@description('Deployment token — used by GitHub Actions. Treat as a secret.')
-output apiKey string = listSecrets(staticWebApp.id, staticWebApp.apiVersion).properties.apiKey
+// apiKey (deploy token) is NOT output here — retrieve it after deploy with:
+//   az staticwebapp secrets list --name <name> --resource-group <rg> --query "properties.apiKey" -o tsv

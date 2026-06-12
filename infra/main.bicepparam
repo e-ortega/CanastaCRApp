@@ -1,8 +1,13 @@
 using 'main.bicep'
 
-// Non-secret parameters. Secrets (administratorLoginPassword, jwtSecret)
-// are injected via --parameters in CI (GitHub Actions secrets) — never commit them here.
+// Non-secret params are hardcoded here.
+// Secrets are read from environment variables — set them in your shell before deploying:
+//   $env:POSTGRES_ADMIN_PASSWORD = "..."
+//   $env:JWT_SECRET              = "..."
+// In GitHub Actions they are set from repository secrets.
 
-param environmentName = 'prod'
-param location        = 'eastus2'
-param administratorLogin = 'canastacradmin'
+param environmentName        = 'prod'
+param location               = 'eastus2'
+param administratorLogin     = 'canastacradmin'
+param administratorLoginPassword = readEnvironmentVariable('POSTGRES_ADMIN_PASSWORD')
+param jwtSecret              = readEnvironmentVariable('JWT_SECRET')

@@ -95,9 +95,7 @@ switch ($Command) {
         az deployment group validate `
             --resource-group $env:AZURE_RESOURCE_GROUP `
             --template-file "$InfraDir\main.bicep" `
-            --parameters "$InfraDir\main.bicepparam" `
-            --parameters administratorLoginPassword="$env:POSTGRES_ADMIN_PASSWORD" `
-            --parameters jwtSecret="$env:JWT_SECRET"
+            --parameters "$InfraDir\main.bicepparam"
     }
 
     'infra:deploy' {
@@ -111,8 +109,6 @@ switch ($Command) {
             --resource-group $env:AZURE_RESOURCE_GROUP `
             --template-file "$InfraDir\main.bicep" `
             --parameters "$InfraDir\main.bicepparam" `
-            --parameters administratorLoginPassword="$env:POSTGRES_ADMIN_PASSWORD" `
-            --parameters jwtSecret="$env:JWT_SECRET" `
             --name $RunName
     }
 

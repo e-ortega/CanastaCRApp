@@ -69,7 +69,6 @@ resource kvSecretsUserRole 'Microsoft.Authorization/roleAssignments@2022-04-01' 
     principalId: webApp.identity.principalId
     principalType: 'ServicePrincipal'
   }
-  dependsOn: [webApp]
 }
 
 output defaultHostname string = webApp.properties.defaultHostName

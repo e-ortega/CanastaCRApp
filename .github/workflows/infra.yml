@@ -32,20 +32,22 @@ jobs:
             --location ${{ env.LOCATION }}
 
       - name: Validate Bicep
+        env:
+          POSTGRES_ADMIN_PASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
         run: |
           az deployment group validate \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --template-file infra/main.bicep \
-            --parameters infra/main.bicepparam \
-            --parameters administratorLoginPassword="${{ secrets.POSTGRES_ADMIN_PASSWORD }}" \
-            --parameters jwtSecret="${{ secrets.JWT_SECRET }}"
+            --parameters infra/main.bicepparam
 
       - name: Deploy Bicep
+        env:
+          POSTGRES_ADMIN_PASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
         run: |
           az deployment group create \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --template-file infra/main.bicep \
             --parameters infra/main.bicepparam \
-            --parameters administratorLoginPassword="${{ secrets.POSTGRES_ADMIN_PASSWORD }}" \
-            --parameters jwtSecret="${{ secrets.JWT_SECRET }}" \
             --name "infra-${{ github.run_number }}"
