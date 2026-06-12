@@ -3,10 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class ApiClient {
-  static const _baseUrl = String.fromEnvironment(
-    'API_URL',
-    defaultValue: 'http://localhost:5098',
-  ) + '/api';
+  static const _baseUrl = '${String.fromEnvironment('API_URL', defaultValue: 'http://localhost:5098')}/api';
   static const _storage = FlutterSecureStorage();
 
   late final Dio _dio;
