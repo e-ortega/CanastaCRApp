@@ -1,0 +1,54 @@
+name: Deploy infrastructure
+
+on:
+  push:
+    branches: [main]
+    paths: ['infra/**']
+  workflow_dispatch:        # allow manual trigger from GitHub UI
+
+permissions:
+  id-token: write           # required for OIDC login
+  contents: read
+
+env:
+  RESOURCE_GROUP: canastacr-rg
+  LOCATION: eastus2
+
+jobs:
+  deploy:
+    name: Bicep deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Create resource group (idempotent)
+        run: |
+          az group create \
+            --name ${{ env.RESOURCE_GROUP }} \
+            --location ${{ env.LOCATION }}
+
+      - name: Validate Bicep
+        run: |
+          az deployment group validate \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --template-file infra/main.bicep \
+            --parameters infra/main.bicepparam \
+            --parameters administratorLoginPassword="${{ secrets.POSTGRES_ADMIN_PASSWORD }}" \
+            --parameters jwtSecret="${{ secrets.JWT_SECRET }}"
+
+      - name: Deploy Bicep
+        run: |
+          az deployment group create \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --template-file infra/main.bicep \
+            --parameters infra/main.bicepparam \
+            --parameters administratorLoginPassword="${{ secrets.POSTGRES_ADMIN_PASSWORD }}" \
+            --parameters jwtSecret="${{ secrets.JWT_SECRET }}" \
+            --name "infra-${{ github.run_number }}"
