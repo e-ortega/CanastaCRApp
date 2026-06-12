@@ -7,7 +7,7 @@ using 'main.bicep'
 // In GitHub Actions they are set from repository secrets.
 
 param environmentName        = 'prod'
-param location               = 'eastus2'
+param location               = 'westus2'
 param administratorLogin     = 'canastacradmin'
 param administratorLoginPassword = readEnvironmentVariable('POSTGRES_ADMIN_PASSWORD')
 param jwtSecret              = readEnvironmentVariable('JWT_SECRET')
