@@ -7,7 +7,8 @@ using 'main.bicep'
 // In GitHub Actions they are set from repository secrets.
 
 param environmentName        = 'prod'
-param location               = 'westus2'
+param location               = 'canadacentral'
+param staticWebAppLocation   = 'centralus'    // SWA not available in Canada Central
 param administratorLogin     = 'canastacradmin'
 param administratorLoginPassword = readEnvironmentVariable('POSTGRES_ADMIN_PASSWORD')
 param jwtSecret              = readEnvironmentVariable('JWT_SECRET')

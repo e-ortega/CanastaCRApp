@@ -104,7 +104,8 @@ switch ($Command) {
         Require-EnvVar 'POSTGRES_ADMIN_PASSWORD'
         Require-EnvVar 'JWT_SECRET'
         $RunName = "manual-$(Get-Date -Format 'yyyyMMdd-HHmm')"
-        az group create --name $env:AZURE_RESOURCE_GROUP --location eastus2
+        $RgLocation = $env:AZURE_LOCATION ?? 'canadacentral'
+        az group create --name $env:AZURE_RESOURCE_GROUP --location $RgLocation
         az deployment group create `
             --resource-group $env:AZURE_RESOURCE_GROUP `
             --template-file "$InfraDir\main.bicep" `
@@ -157,6 +158,7 @@ switch ($Command) {
         Write-Host ""
         Write-Host "  Env vars for infra commands:" -ForegroundColor DarkGray
         Write-Host "    `$env:AZURE_RESOURCE_GROUP   = 'canastacr-rg'"
+        Write-Host "    `$env:AZURE_LOCATION         = 'canadacentral'  # optional, default: canadacentral"
         Write-Host "    `$env:POSTGRES_ADMIN_PASSWORD = '...'"
         Write-Host "    `$env:JWT_SECRET              = '...'"
         Write-Host ""

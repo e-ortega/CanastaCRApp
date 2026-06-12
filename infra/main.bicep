@@ -5,6 +5,9 @@ param environmentName string = 'prod'
 
 param location string = resourceGroup().location
 
+@description('Region for Static Web Apps — must be one of: centralus, eastus2, westus2, westeurope, eastasia.')
+param staticWebAppLocation string = 'centralus'
+
 @description('PostgreSQL admin username.')
 param administratorLogin string = 'canastacradmin'
 
@@ -55,19 +58,18 @@ module appservice 'modules/appservice.bicep' = {
   params: {
     location: location
     appName: apiAppName
-    keyVaultName: keyVaultName
-    keyVaultResourceId: keyvault.outputs.keyVaultResourceId
     postgresFqdn: postgres.outputs.fqdn
     postgresAdminLogin: administratorLogin
     postgresAdminPassword: administratorLoginPassword
     appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
+    jwtSecret: jwtSecret
   }
 }
 
 module staticwebapp 'modules/staticwebapp.bicep' = {
   name: 'staticwebapp'
   params: {
-    location: location
+    location: staticWebAppLocation
     name: swaName
   }
 }

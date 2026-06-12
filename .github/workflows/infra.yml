@@ -9,7 +9,7 @@ permissions:
 
 env:
   RESOURCE_GROUP: canastacr-rg
-  LOCATION: eastus2
+  LOCATION: canadacentral
 
 jobs:
   deploy:
