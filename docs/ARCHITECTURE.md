@@ -19,6 +19,7 @@
    - [7.2 MegaSuper research findings — enumeration still broken, deferred](#72-megasuper-research-findings-2026-06-16--enumeration-still-broken-deferred)
 8. [Live Test Framework](#8-live-test-framework)
 9. [Observability & Operations](#9-observability--operations)
+10. [Incident: Overnight Nightly Cron — First Real Verification](#10-incident-overnight-nightly-cron--first-real-verification)
 
 ---
 
@@ -553,3 +554,45 @@ Or open `scraper/src/CanastaCR.Scraper/logs/scrape-YYYYMMDD.log` directly for a 
 ### 9.4 Azure logging — not yet applicable to the scraper
 
 The existing `.\scripts\run.ps1 log:tail` (`az webapp log tail`) streams logs for the **main API**, which is deployed to Azure App Service. The scraper is **local-only** today (section 4's decision: start local, add an Azure Container Apps Job later). When that move happens, this section should be updated with the equivalent Azure-side command (likely `az containerapp logs show` or Azure Monitor/Log Analytics querying, depending on which Azure compute option is chosen) — until then, section 9.1–9.3 above is the complete operational story.
+
+---
+
+## 10. Incident: Overnight Nightly Cron — First Real Verification
+
+**Date:** 2026-06-16
+**Status:** Cron confirmed working; one concurrency bug found and fixed
+
+### The good news first
+
+The owner left the scraper running overnight (manually started, per the section 9.2 "for now, run it manually" interim plan). The next morning, querying Hangfire's job storage directly confirmed: **`ScrapeAllStoresJob` fired automatically at 2026-06-16 04:00:10 -06:00** — exactly matching the `0 4 * * *` cron schedule in Costa Rica time, with zero manual intervention. This is the first end-to-end proof that the whole pipeline (cron → fan-out → 5 independent store jobs → writes) works unattended.
+
+```sql
+-- How this was checked, for future reference: Hangfire stores succeeded job results as JSON
+-- in hangfire.state.data, keyed by job ID via hangfire.job.stateid. Joining job ↔ its current
+-- state and filtering by invocationdata's Type gives a queryable history of every scrape run
+-- and its StoreScrapeResult, independent of whatever the Hangfire dashboard UI shows:
+SELECT j.id, j.createdat, j.statename,
+       j.invocationdata->>'Type' AS job_type, j.arguments,
+       s.data->>'Result' AS result
+FROM hangfire.job j JOIN hangfire.state s ON j.stateid = s.id
+WHERE j.invocationdata->>'Type' ILIKE '%ScrapeStoreJob%' OR j.invocationdata->>'Type' ILIKE '%ScrapeAllStoresJob%'
+ORDER BY j.createdat DESC;
+```
+
+### The bug this surfaced
+
+A manual full run at 01:00 AM (before the 4 AM cron) showed **Más x Menos failed completely** — its `StoreScrapeResult` was just `{"StoreName":"Más x Menos La Uruca","Error":"An error occurred while saving the entity changes. See the inner exception for details."}`, no written/skipped counts at all. The local log file showed why: `Npgsql.PostgresException 23505: duplicate key value violates unique constraint "IX_Products_Barcode"`, repeated **10,956 times** in a row before the run gave up.
+
+Root cause: this is exactly the kind of bug the section 9 parallelization work made newly possible. `ProductMatcherService.FindOrCreateProductAsync`'s EAN path is check-then-insert (`SELECT ... WHERE Barcode = X` → if null, `INSERT`), with no atomicity between the two steps. Now that multiple stores genuinely run concurrently (each on its own `ScraperDbContext`), two stores that both carry the same nationally-distributed product (e.g. a Coca-Cola SKU sold at both MaxiPalí and Más x Menos) can both check, both find nothing yet, and both try to insert — the unique index on `Barcode` correctly rejects the loser. That part is an expected, benign race in a system designed for concurrent writers, not a bug by itself.
+
+The actual bug was the *handling*: the resulting `DbUpdateException` was never caught at the point of insertion, so it propagated up un-handled. Worse, the half-saved entity was left in the `DbContext`'s change tracker, which meant **every subsequent `SaveChanges` call for the rest of that store's run kept re-throwing the identical error** — hence 10,956 repeats — until the final unguarded flush at the end of `PriceWriterService.WriteAsync` threw too and the whole exception escaped to `ScrapeStoreJob`'s outer catch, losing the entire store's writes for that run. Notably, this *didn't* repeat at the 4 AM cron run a few hours later — consistent with a timing-dependent race rather than a deterministic bug, which is exactly why it wasn't caught by the live test suite (single-store tests don't run two stores concurrently against the same barcode).
+
+### The fix
+
+- **`ProductMatcherService.CreateProductAsync`** now catches `DbUpdateException` on the insert, detaches the half-saved entity, and re-queries by barcode — returning whichever insert actually won the race instead of throwing. This is the real fix: the race becomes a graceful "use theirs instead" rather than a crash.
+- **`PriceWriterService.WriteAsync`** now also clears the change tracker (`db.ChangeTracker.Clear()`) on any per-product failure, and wraps the final flush in its own try/catch — defense in depth so an *unanticipated* future failure mode can't repeat the same "one error poisons everything for the rest of the run" cascade. Write counts are also now reclassified correctly when a batch flush fails (previously `written` was incremented optimistically before the flush even ran, so a failed flush could over-report).
+- Regression test added (`CreateProductAsync_ReturnsTheWinner_WhenAnotherStoreInsertedTheSameBarcodeConcurrently`): deterministically recreates "another store already won the race" without needing real thread concurrency, by calling `CreateProductAsync` directly (now `internal` + `InternalsVisibleTo` for testability) against a DbContext that already has the conflicting row committed.
+
+### What this confirms about the new observability tooling
+
+This is also a validation of the section 7/9 fixes working as intended: the failure was **immediately visible** in the `StoreScrapeResult` JSON (no written/skipped counts, an `Error` field with the actual exception message) rather than silently looking like "Succeeded" with zero rows and no explanation — the exact failure mode this tooling was built to surface. Diagnosing it took minutes (query Hangfire's job table → grep the log for the timestamp → find the repeated exception), not the multi-hour forensic reconstruction the section 7 incident required.

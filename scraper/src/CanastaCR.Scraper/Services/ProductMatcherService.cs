@@ -69,7 +69,9 @@ public partial class ProductMatcherService(ScraperDbContext db, ILogger<ProductM
         return await CreateProductAsync(scraped, ct);
     }
 
-    private async Task<Product> CreateProductAsync(ScrapedProduct scraped, CancellationToken ct)
+    // internal (not private) so the duplicate-barcode race-handling path can be exercised
+    // directly in tests without needing real thread concurrency — see ProductMatcherServiceMatchingTests
+    internal async Task<Product> CreateProductAsync(ScrapedProduct scraped, CancellationToken ct)
     {
         var product = new Product
         {
@@ -82,8 +84,35 @@ public partial class ProductMatcherService(ScraperDbContext db, ILogger<ProductM
             CreatedAt = DateTimeOffset.UtcNow
         };
         db.Products.Add(product);
-        await db.SaveChangesAsync(ct);
-        return product;
+
+        try
+        {
+            await db.SaveChangesAsync(ct);
+            return product;
+        }
+        catch (DbUpdateException) when (!string.IsNullOrEmpty(scraped.Barcode))
+        {
+            // Multiple stores scrape concurrently (each with its own DbContext), and the same
+            // EAN-keyed product (e.g. a nationally-distributed brand sold at both MaxiPalí and
+            // Más x Menos) can be found "not yet in the DB" by two of them at nearly the same
+            // moment — both then try to insert it, and the unique index on Barcode correctly
+            // rejects the loser. This is an expected, benign race in a system designed for
+            // concurrent writers, not a real failure: detach our half-saved entity and use
+            // whichever insert actually won instead of throwing. Confirmed live 2026-06-16 —
+            // unhandled, this corrupted the change tracker for the rest of that store's run
+            // (every subsequent SaveChanges on this DbContext kept re-throwing the same
+            // duplicate-key error, 10,956 times in one incident, ultimately losing the entire
+            // store's writes for that run).
+            db.Entry(product).State = EntityState.Detached;
+            var winner = await db.Products.FirstOrDefaultAsync(p => p.Barcode == scraped.Barcode, ct);
+            if (winner is not null)
+            {
+                logger.LogDebug("Lost insert race for barcode '{Barcode}' — using the concurrently-inserted product instead",
+                    scraped.Barcode);
+                return winner;
+            }
+            throw; // not actually a barcode collision — something else is wrong, surface it
+        }
     }
 
     private static double FuzzyScore(ScrapedProduct scraped, Product existing)

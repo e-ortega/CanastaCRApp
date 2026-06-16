@@ -25,6 +25,7 @@ public class PriceWriterService(
         var written = 0;
         var skipped = 0;
         var failed = 0;
+        var writtenSinceLastFlush = 0; // entities currently pending in an uncommitted SaveChanges batch
         var now = DateTimeOffset.UtcNow;
 
         foreach (var scraped in products)
@@ -57,22 +58,51 @@ public class PriceWriterService(
 
                 db.PriceReports.Add(report);
                 written++;
+                writtenSinceLastFlush++;
 
                 // Flush every 100 records to avoid huge in-memory change tracker
-                if (written % 100 == 0)
+                if (writtenSinceLastFlush >= 100)
                 {
                     await db.SaveChangesAsync(ct);
                     logger.LogInformation("{Store}: saved {Count} price reports so far", storeName, written);
+                    writtenSinceLastFlush = 0;
                 }
             }
             catch (Exception ex)
             {
                 logger.LogError(ex, "Failed to write price for '{Name}' at {Store}", scraped.Name, storeName);
                 failed++;
+
+                // SaveChanges is one transaction — if it just threw, nothing pending in this
+                // batch actually landed, so reclassify it as failed rather than (incorrectly)
+                // counted written. Then clear the tracker so the failure can't poison every
+                // subsequent save for the rest of this store's run: confirmed live 2026-06-16,
+                // an unhandled duplicate-key race (two stores concurrently inserting the same
+                // EAN) left a half-saved entity in the tracker, and every later SaveChanges on
+                // this same DbContext kept re-throwing the identical error — 10,956 times in
+                // one incident — until the entire store's writes for that run were lost.
+                if (writtenSinceLastFlush > 0)
+                {
+                    failed += writtenSinceLastFlush;
+                    written -= writtenSinceLastFlush;
+                    writtenSinceLastFlush = 0;
+                }
+                db.ChangeTracker.Clear();
             }
         }
 
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "{Store}: final flush of {Count} pending price reports failed", storeName, writtenSinceLastFlush);
+            failed += writtenSinceLastFlush;
+            written -= writtenSinceLastFlush;
+            writtenSinceLastFlush = 0;
+        }
+
         logger.LogInformation("{Store}: finished — {Written} written, {Skipped} skipped, {Failed} failed (of {Total})",
             storeName, written, skipped, failed, products.Count);
 

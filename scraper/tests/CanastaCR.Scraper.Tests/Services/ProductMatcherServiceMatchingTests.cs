@@ -100,4 +100,35 @@ public class ProductMatcherServiceMatchingTests : IDisposable
         Assert.Equal(existing.Id, product.Id);
         Assert.Equal(1, await _db.Products.CountAsync());
     }
+
+    [Fact]
+    public async Task CreateProductAsync_ReturnsTheWinner_WhenAnotherStoreInsertedTheSameBarcodeConcurrently()
+    {
+        // Simulates the actual production incident (2026-06-16, ARCHITECTURE.md section 7):
+        // two stores scrape concurrently, each on its own DbContext. Both check "does this
+        // barcode exist?" before either has inserted it, both get null, and both then try to
+        // insert — only one wins the unique constraint. CreateProductAsync is called directly
+        // here (bypassing FindOrCreateProductAsync's own check) to deterministically recreate
+        // "we already decided to create, but meanwhile someone else won the race" without
+        // needing real thread concurrency, which the actual race depends on timing for.
+        var scraped = new ScrapedProduct(
+            Name: "Coca-Cola 2L", Brand: "Coca-Cola", Barcode: "7441099999999",
+            Price: 1200, Currency: "CRC", ImageUrl: null, Category: null,
+            IsAvailable: true, SourceUrl: "https://example.com");
+
+        var winner = new Product
+        {
+            Id = Guid.NewGuid(),
+            Name = "Coca-Cola 2L",
+            Barcode = "7441099999999",
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        _db.Products.Add(winner);
+        await _db.SaveChangesAsync(); // the "other store" already committed this insert
+
+        var result = await _matcher.CreateProductAsync(scraped, CancellationToken.None);
+
+        Assert.Equal(winner.Id, result.Id);
+        Assert.Equal(1, await _db.Products.CountAsync()); // no duplicate row, despite the conflict
+    }
 }
