@@ -115,6 +115,30 @@ public class ProductServiceTests
     }
 
     [Fact]
+    public async Task GetAllAsync_ShowsChainDisplayName_ForChainLevelScrapedPrice()
+    {
+        // Scraped prices are chain-level (no specific Store row) — see
+        // docs/ARCHITECTURE.md section 11.
+        var db = DbContextFactory.Create();
+        var product = new Product { Id = Guid.NewGuid(), Name = "Soda", Brand = "Brand", Category = "Beverages", CreatedAt = DateTimeOffset.UtcNow };
+
+        product.PriceReports =
+        [
+            new PriceReport { Price = 700, StoreId = null, Chain = StoreChain.Walmart, ExpiresAt = DateTimeOffset.UtcNow.AddDays(1), Source = PriceSource.Scraped },
+        ];
+
+        db.Products.Add(product);
+        await db.SaveChangesAsync();
+
+        var service = new ProductService(db, new Mock<IOpenFoodFactsClient>().Object);
+        var result = await service.GetAllAsync();
+
+        Assert.Single(result);
+        Assert.Equal(700, result[0].LowestPrice);
+        Assert.Equal("Walmart", result[0].LowestPriceStore);
+    }
+
+    [Fact]
     public async Task GetAllAsync_ExcludesExpiredPrices()
     {
         var db = DbContextFactory.Create();

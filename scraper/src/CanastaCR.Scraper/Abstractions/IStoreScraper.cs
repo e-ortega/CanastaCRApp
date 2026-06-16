@@ -1,7 +1,18 @@
+using CanastaCR.Core.Enums;
+
 namespace CanastaCR.Scraper.Abstractions;
 
 public interface IStoreScraper
 {
+    /// <summary>
+    /// The chain this scraper writes prices for — the canonical identity used to route jobs
+    /// and write PriceReports. Not tied to one physical location: every chain scraped so far
+    /// sets one nationwide price, not a per-location price (see docs/ARCHITECTURE.md section
+    /// 11), so scraped prices are chain-level, never a specific Store row.
+    /// </summary>
+    StoreChain Chain { get; }
+
+    /// <summary>Friendly label for logs — e.g. "MaxiPalí", not tied to one specific location.</summary>
     string StoreName { get; }
 
     /// <summary>

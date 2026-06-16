@@ -106,14 +106,18 @@ Product
 
 Store
   id, name, chain (enum), address, lat, lng, city
-  → 10 locations seeded via HasData
+  → 12 locations seeded via HasData
 
 PriceReport
-  id, productId → Product, storeId → Store,
+  id, productId → Product,
+  storeId → Store (nullable) / chain (enum, nullable) — exactly one is set, never both:
+    UserSubmitted reports carry a real storeId (a shopper observed this at a specific
+    location); Scraped reports carry chain instead (every chain scraped so far prices
+    uniformly nationwide, not per location — see docs/ARCHITECTURE.md section 11),
   price (decimal 12,2), currency (CRC default),
   source (enum: UserSubmitted | Scraped),
   reportedBy → User (nullable — null for scraper),
-  reportedAt, expiresAt (90 days default)
+  reportedAt, expiresAt (90 days UserSubmitted / 3 days Scraped default)
 
 User
   id, email (unique), displayName, passwordHash,

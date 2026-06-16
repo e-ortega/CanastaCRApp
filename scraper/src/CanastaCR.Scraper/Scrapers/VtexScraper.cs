@@ -1,3 +1,4 @@
+using CanastaCR.Core.Enums;
 using CanastaCR.Scraper.Abstractions;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -5,23 +6,24 @@ using System.Text.Json;
 namespace CanastaCR.Scraper.Scrapers;
 
 /// <summary>
-/// Scrapes VTEX-based stores: MaxiPalí and Más x Menos.
-/// Parameterized by base URL so one class handles both.
+/// Scrapes VTEX-based stores: MaxiPalí, Más x Menos, and Walmart.
+/// Parameterized by chain + base URL so one class handles all three.
 /// </summary>
-public class VtexScraper(string storeName, string baseUrl, HttpClient http, ILogger<VtexScraper> logger) : IStoreScraper
+public class VtexScraper(StoreChain chain, string baseUrl, HttpClient http, ILogger<VtexScraper> logger) : IStoreScraper
 {
     private const int PageSize = 49;
 
-    public string StoreName => storeName;
+    public StoreChain Chain => chain;
+    public string StoreName => chain.GetDisplayName();
     public string Platform => "vtex";
 
     public async Task<IReadOnlyList<ScrapedProduct>> ScrapeAsync(int? maxProducts = null, CancellationToken ct = default)
     {
-        logger.LogInformation("{Store}: starting VTEX scrape", storeName);
+        logger.LogInformation("{Store}: starting VTEX scrape", StoreName);
         var results = new List<ScrapedProduct>();
 
         var categories = await GetCategoryIdsAsync(ct);
-        logger.LogInformation("{Store}: found {Count} categories", storeName, categories.Count);
+        logger.LogInformation("{Store}: found {Count} categories", StoreName, categories.Count);
 
         // A capped run (smoke test / manual Postman check) makes far fewer total requests than
         // a full catalog crawl, so a shorter delay is still polite. Many categories are sparse
@@ -42,7 +44,7 @@ public class VtexScraper(string storeName, string baseUrl, HttpClient http, ILog
             await Task.Delay(interCategoryDelay, ct);
         }
 
-        logger.LogInformation("{Store}: scraped {Count} products total", storeName, results.Count);
+        logger.LogInformation("{Store}: scraped {Count} products total", StoreName, results.Count);
         return results;
     }
 
@@ -71,7 +73,7 @@ public class VtexScraper(string storeName, string baseUrl, HttpClient http, ILog
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "{Store}: failed to get category tree", storeName);
+            logger.LogError(ex, "{Store}: failed to get category tree", StoreName);
         }
 
         return ids;
@@ -105,7 +107,7 @@ public class VtexScraper(string storeName, string baseUrl, HttpClient http, ILog
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "{Store}: failed page at category {CategoryId} from={From}", storeName, categoryId, from);
+                logger.LogError(ex, "{Store}: failed page at category {CategoryId} from={From}", StoreName, categoryId, from);
                 break;
             }
         }

@@ -1,5 +1,8 @@
 class StorePrice {
-  final String storeId;
+  // Null for chain-level scraped prices (no specific physical location) — every chain
+  // scraped so far sets one nationwide price, not a per-location price. storeName/chain
+  // are always present either way: a chain's display name when storeId is null.
+  final String? storeId;
   final String storeName;
   final String chain;
   final double price;
@@ -8,7 +11,7 @@ class StorePrice {
   final bool isExpired;
 
   const StorePrice({
-    required this.storeId,
+    this.storeId,
     required this.storeName,
     required this.chain,
     required this.price,

@@ -34,7 +34,7 @@ public class ScrapeAllStoresJob(
             selected.Count, platform ?? "none");
 
         var jobIds = selected
-            .Select(s => bgJobClient.Enqueue<ScrapeStoreJob>(j => j.RunAsync(s.StoreName, maxProductsPerStore, CancellationToken.None)))
+            .Select(s => bgJobClient.Enqueue<ScrapeStoreJob>(j => j.RunAsync(s.Chain, maxProductsPerStore, CancellationToken.None)))
             .ToList();
 
         logger.LogInformation("Fanned out jobs: {JobIds}", string.Join(", ", jobIds));

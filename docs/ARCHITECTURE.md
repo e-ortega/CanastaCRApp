@@ -20,6 +20,7 @@
 8. [Live Test Framework](#8-live-test-framework)
 9. [Observability & Operations](#9-observability--operations)
 10. [Incident: Overnight Nightly Cron — First Real Verification](#10-incident-overnight-nightly-cron--first-real-verification)
+11. [Scraped Prices Are Chain-Level, Not Store-Level](#11-scraped-prices-are-chain-level-not-store-level)
 
 ---
 
@@ -596,3 +597,42 @@ The actual bug was the *handling*: the resulting `DbUpdateException` was never c
 ### What this confirms about the new observability tooling
 
 This is also a validation of the section 7/9 fixes working as intended: the failure was **immediately visible** in the `StoreScrapeResult` JSON (no written/skipped counts, an `Error` field with the actual exception message) rather than silently looking like "Succeeded" with zero rows and no explanation — the exact failure mode this tooling was built to surface. Diagnosing it took minutes (query Hangfire's job table → grep the log for the timestamp → find the repeated exception), not the multi-hour forensic reconstruction the section 7 incident required.
+
+---
+
+## 11. Scraped Prices Are Chain-Level, Not Store-Level
+
+**Date:** 2026-06-16
+**Status:** Implemented — Core, Infrastructure, Scraper, Api, Flutter all updated
+
+### The question that triggered this
+
+While reviewing the architecture, the owner asked: we seed two physical locations per chain (e.g. MaxiPalí Alajuela and MaxiPalí Heredia) and the schema lets a `PriceReport` point at either — but does it actually make sense to track price independently per location, if the chain just charges the same price everywhere?
+
+### The evidence
+
+- **PriceSmart**: confirmed in section 7.1's schema research — a product's `unit_price` attribute carries an identical value across *every* Costa Rica club code (San José, Alajuela, Heredia, Cartago, Liberia, ...). Only stock quantity varies by club; price never does.
+- **VTEX (MaxiPalí, Más x Menos, Walmart)**: the scraped endpoint is each chain's single nationwide catalog API — there is no location parameter anywhere in it. One price per product, full stop.
+- **What was actually in the database confirmed it independently**: before this change, every chain had 2 seeded `Store` rows, but the scraper only ever wrote to whichever one name was hardcoded in `Program.cs`. MaxiPalí Heredia, Más x Menos Cartago, PriceSmart Alajuela, and Walmart Alajuela all had **zero** scraped rows — not a bug, just a symptom of the data model not matching reality.
+
+Conclusion: writing the same price to every physical location of a chain would be pure duplication of data that's identical by construction, not independent observations. Retained over a long time horizon (this data is meant to accumulate history), that duplication only grows.
+
+### The decision
+
+Scraped prices (`PriceReport.Source == Scraped`) are now **chain-level**: `StoreId` is `null`, and a new `Chain` (`StoreChain?`) field carries the identity instead. User-submitted prices are unaffected — a real shopper's price report is inherently tied to wherever they physically were, so those keep a concrete `StoreId` and leave `Chain` null. Exactly one of the two is ever set per row.
+
+`Store` rows themselves are unchanged and still serve their original purpose — physical location, address, lat/lng for "near me" features — they're just no longer the join target for scraped prices specifically.
+
+### What changed
+
+| Layer | Change |
+|---|---|
+| **Core** (`PriceReport.cs`) | `StoreId` → `Guid?`, `Store` nav → `Store?`, new `StoreChain? Chain`. New `StoreChainExtensions.GetDisplayName()` for a friendly chain label ("MaxiPalí", "Más x Menos", ...) used wherever a chain-level row needs a display string in place of a store name. |
+| **Infrastructure** | `AppDbContext`/`ScraperDbContext`: `HasOne(p => p.Store).WithMany(...).IsRequired(false)`. New migration `MakePriceReportChainLevel` (nullable `StoreId`, new `Chain` column). |
+| **Scraper** | `IStoreScraper` now exposes `StoreChain Chain` as its canonical identity (routing key for `ScrapeStoreJob`/`ScrapeAllStoresJob`), with `StoreName` becoming a derived friendly label (`Chain.GetDisplayName()`) rather than one specific location's name. `PriceWriterService` no longer queries the `Stores` table at all — it writes `StoreId = null, Chain = chain` directly, which is both simpler and removes a class of failure (the "store not found" skip from section 7 can't happen anymore, since there's no store lookup to fail). |
+| **Api** | `PriceService`/`ShoppingService` group by `(StoreId, Chain)` instead of `StoreId` alone (grouping by `StoreId` alone would merge every chain's scraped rows into one null-keyed bucket). Display-name fallback (`Store?.Name ?? Chain.GetDisplayName()`) added wherever a store name is shown. `ProductService.GetAllAsync`/`SearchAsync` restructured into a two-phase query — fetch raw price/store/chain data via EF (translatable), then apply the friendly-name fallback in C# afterward, since `GetDisplayName()` itself can't run inside a query EF translates to SQL (the same class of trap as the section 7 `Normalize()` incident). `StorePriceDto`/`StoreShoppingGroupDto.StoreId` → nullable. |
+| **Flutter** | `StorePrice.storeId`/`StoreGroup.storeId` → nullable `String?`. No UI logic changes needed — `storeName`/`chain` remain always-present display strings either way, and nothing in the app dereferences `storeId` for display, only carries it. |
+
+### Why this is safe today and revisit-able later
+
+This assumes every chain prices uniformly nationwide. That's confirmed for the four chains actually scraped (VTEX × 3, PriceSmart) but **not yet confirmed for AutoMercado or MegaSuper** (AutoMercado is still un-scraped — section 1; MegaSuper's enumeration is still broken — section 7.2). If either turns out to genuinely vary by location once scraped, the model already supports it without another migration: a scraper for that chain can simply write `StoreId` (a real location) instead of `Chain`, row by row, exactly like a user submission does. The chain-level path and the store-level path coexist in the same table by design — nothing about this decision forecloses per-location pricing if reality turns out to need it.

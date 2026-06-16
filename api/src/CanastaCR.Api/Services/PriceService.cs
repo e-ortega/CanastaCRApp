@@ -20,15 +20,18 @@ public class PriceService(AppDbContext db)
         var prices = await db.PriceReports
             .Include(r => r.Store)
             .Where(r => r.ProductId == productId)
-            .GroupBy(r => r.StoreId)
+            // Group by (StoreId, Chain) not just StoreId: chain-level scraped prices have
+            // StoreId null, so grouping by StoreId alone would merge every chain's scraped
+            // price into a single null-keyed group instead of keeping chains separate.
+            .GroupBy(r => new { r.StoreId, r.Chain })
             .Select(g => g.OrderByDescending(r => r.ReportedAt).First())
             .ToListAsync(ct);
 
         var storePrices = prices
             .Select(r => new StorePriceDto(
                 r.StoreId,
-                r.Store.Name,
-                r.Store.Chain,
+                r.Store?.Name ?? r.Chain!.Value.GetDisplayName(),
+                r.Store?.Chain ?? r.Chain!.Value,
                 r.Price,
                 r.Currency,
                 r.ReportedAt,
@@ -109,15 +112,15 @@ public class PriceService(AppDbContext db)
 
         // For each product that has active prices at 2+ stores, compute the gap
         var productPrices = await db.PriceReports
-            .Include(r => r.Store)
             .Where(r => r.ExpiresAt > now)
-            .GroupBy(r => new { r.ProductId, r.StoreId })
+            .GroupBy(r => new { r.ProductId, r.StoreId, r.Chain })
             .Select(g => new
             {
                 g.Key.ProductId,
                 g.Key.StoreId,
+                g.Key.Chain,
                 Price = g.OrderByDescending(r => r.ReportedAt).First().Price,
-                StoreName = g.OrderByDescending(r => r.ReportedAt).First().Store.Name,
+                StoreName = g.OrderByDescending(r => r.ReportedAt).First().Store!.Name,
             })
             .ToListAsync(ct);
 
@@ -141,9 +144,9 @@ public class PriceService(AppDbContext db)
             deals.Add(new TopDealDto(
                 group.Key,
                 productNames.GetValueOrDefault(group.Key, ""),
-                min.StoreName,
+                min.StoreName ?? min.Chain!.Value.GetDisplayName(),
                 min.Price,
-                max.StoreName,
+                max.StoreName ?? max.Chain!.Value.GetDisplayName(),
                 max.Price,
                 savingsAmt,
                 savingsPct));
@@ -160,6 +163,8 @@ public class PriceService(AppDbContext db)
     }
 
     private static PriceReportDto MapToDto(PriceReport r, DateTimeOffset now) =>
-        new(r.Id, r.ProductId, r.Product.Name, r.StoreId, r.Store.Name, r.Store.Chain,
+        new(r.Id, r.ProductId, r.Product.Name, r.StoreId ?? Guid.Empty,
+            r.Store?.Name ?? r.Chain?.GetDisplayName() ?? "?",
+            r.Store?.Chain ?? r.Chain ?? StoreChain.Other,
             r.Price, r.Currency, r.Source, r.ReportedAt, r.ExpiresAt, r.ExpiresAt < now);
 }

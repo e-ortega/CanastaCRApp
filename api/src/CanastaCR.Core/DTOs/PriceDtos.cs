@@ -25,7 +25,7 @@ public record CreatePriceReportDto(
 );
 
 public record StorePriceDto(
-    Guid StoreId,
+    Guid? StoreId,
     string StoreName,
     StoreChain Chain,
     decimal Price,

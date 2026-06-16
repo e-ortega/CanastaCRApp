@@ -1,3 +1,4 @@
+using CanastaCR.Core.Enums;
 using CanastaCR.Scraper.Abstractions;
 using CanastaCR.Scraper.Jobs;
 using Hangfire;
@@ -24,9 +25,9 @@ public class ScrapeAllStoresJobTests
     {
         IStoreScraper[] scrapers =
         [
-            new FakeStoreScraper("StoreA", "vtex"),
-            new FakeStoreScraper("StoreB", "vtex"),
-            new FakeStoreScraper("StoreC", "pricesmart")
+            new FakeStoreScraper(StoreChain.MaxiPali, "vtex"),
+            new FakeStoreScraper(StoreChain.MasXMenos, "vtex"),
+            new FakeStoreScraper(StoreChain.PriceSmart, "pricesmart")
         ];
         var createdJobs = new List<Job>();
         var mockClient = NewMockClient(createdJobs);
@@ -45,9 +46,9 @@ public class ScrapeAllStoresJobTests
     {
         IStoreScraper[] scrapers =
         [
-            new FakeStoreScraper("StoreA", "vtex"),
-            new FakeStoreScraper("StoreB", "vtex"),
-            new FakeStoreScraper("StoreC", "pricesmart")
+            new FakeStoreScraper(StoreChain.MaxiPali, "vtex"),
+            new FakeStoreScraper(StoreChain.MasXMenos, "vtex"),
+            new FakeStoreScraper(StoreChain.PriceSmart, "pricesmart")
         ];
         var createdJobs = new List<Job>();
         var mockClient = NewMockClient(createdJobs);
@@ -59,16 +60,16 @@ public class ScrapeAllStoresJobTests
         Assert.Equal(2, jobIds.Count);
         Assert.Equal(2, createdJobs.Count);
 
-        var targetedStoreNames = createdJobs.Select(j => (string)j.Args[0]).ToList();
-        Assert.Contains("StoreA", targetedStoreNames);
-        Assert.Contains("StoreB", targetedStoreNames);
-        Assert.DoesNotContain("StoreC", targetedStoreNames);
+        var targetedChains = createdJobs.Select(j => (StoreChain)j.Args[0]).ToList();
+        Assert.Contains(StoreChain.MaxiPali, targetedChains);
+        Assert.Contains(StoreChain.MasXMenos, targetedChains);
+        Assert.DoesNotContain(StoreChain.PriceSmart, targetedChains);
     }
 
     [Fact]
     public void RunAsync_EnqueuesNothing_WhenPlatformFilterMatchesNoScrapers()
     {
-        IStoreScraper[] scrapers = [new FakeStoreScraper("StoreA", "vtex")];
+        IStoreScraper[] scrapers = [new FakeStoreScraper(StoreChain.MaxiPali, "vtex")];
         var createdJobs = new List<Job>();
         var mockClient = NewMockClient(createdJobs);
 

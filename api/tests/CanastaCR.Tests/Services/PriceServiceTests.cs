@@ -44,6 +44,27 @@ public class PriceServiceTests
         db.SaveChanges();
     }
 
+    // Scraped prices are chain-level, not tied to one Store row — see docs/ARCHITECTURE.md
+    // section 11. StoreId is null; Chain is set instead.
+    private static void AddChainPrice(CanastaCR.Infrastructure.Persistence.AppDbContext db,
+        StoreChain chain, decimal price, DateTimeOffset? reportedAt = null, DateTimeOffset? expiresAt = null)
+    {
+        var now = DateTimeOffset.UtcNow;
+        db.PriceReports.Add(new PriceReport
+        {
+            Id           = Guid.NewGuid(),
+            ProductId    = ProductId,
+            StoreId      = null,
+            Chain        = chain,
+            Price        = price,
+            Currency     = "CRC",
+            Source       = PriceSource.Scraped,
+            ReportedAt   = reportedAt ?? now,
+            ExpiresAt    = expiresAt ?? now.AddDays(3),
+        });
+        db.SaveChanges();
+    }
+
     [Fact]
     public async Task GetComparison_ReturnsPricesOrderedCheapestFirst()
     {
@@ -136,5 +157,39 @@ public class PriceServiceTests
         var summary = await service.GetSavingsSummaryAsync();
 
         Assert.Equal(0, summary.ProductsWithPriceGap);
+    }
+
+    [Fact]
+    public async Task GetComparison_ShowsChainNameAndNullStoreId_ForChainLevelScrapedPrice()
+    {
+        var db = DbContextFactory.Create();
+        SeedBase(db);
+        AddChainPrice(db, StoreChain.Walmart, 890m);
+
+        var service = new PriceService(db);
+        var result  = await service.GetComparisonAsync(ProductId);
+
+        var entry = Assert.Single(result!.Prices);
+        Assert.Null(entry.StoreId);
+        Assert.Equal("Walmart", entry.StoreName);
+        Assert.Equal(StoreChain.Walmart, entry.Chain);
+        Assert.Equal(890m, entry.Price);
+    }
+
+    [Fact]
+    public async Task GetComparison_KeepsChainLevelAndStoreLevelPrices_AsSeparateEntries()
+    {
+        var db = DbContextFactory.Create();
+        SeedBase(db);
+        AddPrice(db, Store2Id, 1100m); // a specific MaxiPalí location, user-submitted
+        AddChainPrice(db, StoreChain.Walmart, 950m); // chain-level, scraped
+
+        var service = new PriceService(db);
+        var result  = await service.GetComparisonAsync(ProductId);
+
+        Assert.Equal(2, result!.Prices.Count);
+        Assert.Equal(950m, result.LowestPrice);
+        Assert.Contains(result.Prices, p => p.StoreId == Store2Id && p.StoreName == "MaxiPalí");
+        Assert.Contains(result.Prices, p => p.StoreId == null && p.StoreName == "Walmart");
     }
 }

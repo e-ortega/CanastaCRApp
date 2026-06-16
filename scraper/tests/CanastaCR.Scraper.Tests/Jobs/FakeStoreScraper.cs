@@ -1,19 +1,22 @@
+using CanastaCR.Core.Enums;
 using CanastaCR.Scraper.Abstractions;
 
 namespace CanastaCR.Scraper.Tests.Jobs;
 
-internal class FakeStoreScraper(string storeName, string platform, IReadOnlyList<ScrapedProduct>? products = null) : IStoreScraper
+internal class FakeStoreScraper(StoreChain chain, string platform, IReadOnlyList<ScrapedProduct>? products = null) : IStoreScraper
 {
-    public string StoreName => storeName;
+    public StoreChain Chain => chain;
+    public string StoreName => chain.GetDisplayName();
     public string Platform => platform;
 
     public Task<IReadOnlyList<ScrapedProduct>> ScrapeAsync(int? maxProducts = null, CancellationToken ct = default) =>
         Task.FromResult(products ?? []);
 }
 
-internal class ThrowingStoreScraper(string storeName) : IStoreScraper
+internal class ThrowingStoreScraper(StoreChain chain) : IStoreScraper
 {
-    public string StoreName => storeName;
+    public StoreChain Chain => chain;
+    public string StoreName => chain.GetDisplayName();
     public string Platform => "fake";
 
     public Task<IReadOnlyList<ScrapedProduct>> ScrapeAsync(int? maxProducts = null, CancellationToken ct = default) =>

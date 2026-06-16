@@ -1,3 +1,4 @@
+using CanastaCR.Core.Enums;
 using CanastaCR.Scraper.Scrapers;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Net;
@@ -47,7 +48,7 @@ public class VtexScraperTests
         });
 
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://www.maxipali.co.cr") };
-        var scraper = new VtexScraper("MaxiPalí Alajuela", "https://www.maxipali.co.cr", http, NullLogger<VtexScraper>.Instance);
+        var scraper = new VtexScraper(StoreChain.MaxiPali, "https://www.maxipali.co.cr", http, NullLogger<VtexScraper>.Instance);
 
         var results = await scraper.ScrapeAsync(ct: CancellationToken.None);
 
@@ -93,7 +94,7 @@ public class VtexScraperTests
         });
 
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://www.maxipali.co.cr") };
-        var scraper = new VtexScraper("MaxiPalí Alajuela", "https://www.maxipali.co.cr", http, NullLogger<VtexScraper>.Instance);
+        var scraper = new VtexScraper(StoreChain.MaxiPali, "https://www.maxipali.co.cr", http, NullLogger<VtexScraper>.Instance);
 
         var results = await scraper.ScrapeAsync(maxProducts: 2, ct: CancellationToken.None);
 
@@ -105,7 +106,7 @@ public class VtexScraperTests
     {
         var handler = new FakeHttpMessageHandler(new Dictionary<string, string>(), statusCode: HttpStatusCode.InternalServerError);
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://www.maxipali.co.cr") };
-        var scraper = new VtexScraper("MaxiPalí Alajuela", "https://www.maxipali.co.cr", http, NullLogger<VtexScraper>.Instance);
+        var scraper = new VtexScraper(StoreChain.MaxiPali, "https://www.maxipali.co.cr", http, NullLogger<VtexScraper>.Instance);
 
         var results = await scraper.ScrapeAsync(ct: CancellationToken.None);
 

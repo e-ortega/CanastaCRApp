@@ -1,3 +1,5 @@
+using CanastaCR.Core.Enums;
+
 namespace CanastaCR.Scraper.Abstractions;
 
 public record WriteResult(int Written, int Skipped, int Failed)
@@ -7,5 +9,5 @@ public record WriteResult(int Written, int Skipped, int Failed)
 
 public interface IScrapeResultStore
 {
-    Task<WriteResult> WriteAsync(string storeName, IReadOnlyList<ScrapedProduct> products, CancellationToken ct = default);
+    Task<WriteResult> WriteAsync(StoreChain chain, IReadOnlyList<ScrapedProduct> products, CancellationToken ct = default);
 }

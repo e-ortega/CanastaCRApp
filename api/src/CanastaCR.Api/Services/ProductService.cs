@@ -1,5 +1,6 @@
 using CanastaCR.Core.DTOs;
 using CanastaCR.Core.Entities;
+using CanastaCR.Core.Enums;
 using CanastaCR.Core.Interfaces;
 using CanastaCR.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -24,58 +25,57 @@ public class ProductService(AppDbContext db, IOpenFoodFactsClient offClient)
     {
         var now = DateTimeOffset.UtcNow;
 
-        return await db.Products
+        var raw = await db.Products
             .OrderBy(p => p.Name)
-            .Select(p => new ProductSearchResultDto(
-                p.Id,
-                p.Barcode,
-                p.Name,
-                p.Brand,
-                p.Category,
-                p.ImageUrl,
-                p.PriceReports
+            .Select(p => new
+            {
+                p.Id, p.Barcode, p.Name, p.Brand, p.Category, p.ImageUrl,
+                Cheapest = p.PriceReports
                     .Where(r => r.ExpiresAt > now)
                     .OrderBy(r => r.Price)
-                    .Select(r => (decimal?)r.Price)
-                    .FirstOrDefault(),
-                p.PriceReports
-                    .Where(r => r.ExpiresAt > now)
-                    .OrderBy(r => r.Price)
-                    .Select(r => r.Store.Name)
+                    .Select(r => new { r.Price, StoreName = r.Store == null ? null : r.Store.Name, r.Chain })
                     .FirstOrDefault()
-            ))
+            })
             .Take(50)
             .ToListAsync(ct);
+
+        return raw.Select(p => new ProductSearchResultDto(
+            p.Id, p.Barcode, p.Name, p.Brand, p.Category, p.ImageUrl,
+            p.Cheapest?.Price,
+            LowestPriceStoreLabel(p.Cheapest?.StoreName, p.Cheapest?.Chain)
+        )).ToList();
     }
 
     public async Task<List<ProductSearchResultDto>> SearchAsync(string query, CancellationToken ct = default)
     {
         var now = DateTimeOffset.UtcNow;
 
-        return await db.Products
+        var raw = await db.Products
             .Where(p => p.Name.ToLower().Contains(query.ToLower()) ||
                         (p.Brand != null && p.Brand.ToLower().Contains(query.ToLower())))
-            .Select(p => new ProductSearchResultDto(
-                p.Id,
-                p.Barcode,
-                p.Name,
-                p.Brand,
-                p.Category,
-                p.ImageUrl,
-                p.PriceReports
+            .Select(p => new
+            {
+                p.Id, p.Barcode, p.Name, p.Brand, p.Category, p.ImageUrl,
+                Cheapest = p.PriceReports
                     .Where(r => r.ExpiresAt > now)
                     .OrderBy(r => r.Price)
-                    .Select(r => (decimal?)r.Price)
-                    .FirstOrDefault(),
-                p.PriceReports
-                    .Where(r => r.ExpiresAt > now)
-                    .OrderBy(r => r.Price)
-                    .Select(r => r.Store.Name)
+                    .Select(r => new { r.Price, StoreName = r.Store == null ? null : r.Store.Name, r.Chain })
                     .FirstOrDefault()
-            ))
+            })
             .Take(20)
             .ToListAsync(ct);
+
+        return raw.Select(p => new ProductSearchResultDto(
+            p.Id, p.Barcode, p.Name, p.Brand, p.Category, p.ImageUrl,
+            p.Cheapest?.Price,
+            LowestPriceStoreLabel(p.Cheapest?.StoreName, p.Cheapest?.Chain)
+        )).ToList();
     }
+
+    // Chain-name fallback can't run inside the EF query above (custom extension methods
+    // aren't SQL-translatable) — apply it after materialization instead.
+    private static string? LowestPriceStoreLabel(string? storeName, StoreChain? chain) =>
+        storeName ?? chain?.GetDisplayName();
 
     public async Task<ProductDto> LookupOrCreateByBarcodeAsync(string barcode, CancellationToken ct = default)
     {

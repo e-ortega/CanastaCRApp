@@ -2,7 +2,6 @@ using CanastaCR.Core.Entities;
 using CanastaCR.Core.Enums;
 using CanastaCR.Scraper.Abstractions;
 using CanastaCR.Scraper.Persistence;
-using Microsoft.EntityFrameworkCore;
 
 namespace CanastaCR.Scraper.Services;
 
@@ -13,15 +12,9 @@ public class PriceWriterService(
 {
     private static readonly TimeSpan PriceExpiry = TimeSpan.FromDays(3);
 
-    public async Task<WriteResult> WriteAsync(string storeName, IReadOnlyList<ScrapedProduct> products, CancellationToken ct = default)
+    public async Task<WriteResult> WriteAsync(StoreChain chain, IReadOnlyList<ScrapedProduct> products, CancellationToken ct = default)
     {
-        var store = await db.Stores.FirstOrDefaultAsync(s => s.Name == storeName, ct);
-        if (store is null)
-        {
-            logger.LogWarning("Store '{StoreName}' not found in database — skipping write", storeName);
-            return new WriteResult(Written: 0, Skipped: products.Count, Failed: 0);
-        }
-
+        var storeName = chain.GetDisplayName();
         var written = 0;
         var skipped = 0;
         var failed = 0;
@@ -44,11 +37,15 @@ public class PriceWriterService(
                     continue;
                 }
 
+                // Chain-level price — every chain scraped so far sets one nationwide price, not
+                // a per-location price (see docs/ARCHITECTURE.md section 11), so this is never
+                // tied to one specific Store row.
                 var report = new PriceReport
                 {
                     Id = Guid.NewGuid(),
                     ProductId = product.Id,
-                    StoreId = store.Id,
+                    StoreId = null,
+                    Chain = chain,
                     Price = scraped.Price,
                     Currency = scraped.Currency,
                     Source = PriceSource.Scraped,

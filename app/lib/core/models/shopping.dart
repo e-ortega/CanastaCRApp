@@ -79,14 +79,16 @@ class OptimizationResult {
 }
 
 class StoreGroup {
-  final String storeId;
+  // Null for chain-level scraped prices (no specific physical location) — see
+  // docs/ARCHITECTURE.md section 11. storeName/chain are always present either way.
+  final String? storeId;
   final String storeName;
   final String chain;
   final double groupTotal;
   final List<OptimizedItem> items;
 
   const StoreGroup({
-    required this.storeId,
+    this.storeId,
     required this.storeName,
     required this.chain,
     required this.groupTotal,

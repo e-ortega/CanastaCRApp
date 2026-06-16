@@ -122,7 +122,9 @@ public class ShoppingService(AppDbContext db)
         var latestPrices = await db.PriceReports
             .Include(r => r.Store)
             .Where(r => productIds.Contains(r.ProductId) && r.ExpiresAt > now)
-            .GroupBy(r => new { r.ProductId, r.StoreId })
+            // (StoreId, Chain): chain-level scraped prices have StoreId null, so grouping by
+            // StoreId alone would merge every chain's price into one null-keyed group.
+            .GroupBy(r => new { r.ProductId, r.StoreId, r.Chain })
             .Select(g => g.OrderByDescending(r => r.ReportedAt).First())
             .ToListAsync(ct);
 
@@ -142,9 +144,10 @@ public class ShoppingService(AppDbContext db)
             assignments[item.ProductId] = (sorted[0], sorted[^1].Price);
         }
 
-        // Group by store
+        // Group by (StoreId, Chain): chain-level scraped prices share no specific StoreId, so
+        // grouping by StoreId alone would lump every chain-level assignment into one bucket.
         var storeGroups = assignments
-            .GroupBy(kvp => kvp.Value.best.StoreId)
+            .GroupBy(kvp => new { kvp.Value.best.StoreId, kvp.Value.best.Chain })
             .Take(prefs.MaxStoresPerTrip)
             .Select(g =>
             {
@@ -165,9 +168,9 @@ public class ShoppingService(AppDbContext db)
                 }).ToList();
 
                 return new StoreShoppingGroupDto(
-                    g.Key,
-                    storeReport.Store.Name,
-                    storeReport.Store.Chain,
+                    g.Key.StoreId,
+                    storeReport.Store?.Name ?? storeReport.Chain!.Value.GetDisplayName(),
+                    storeReport.Store?.Chain ?? storeReport.Chain!.Value,
                     items.Sum(i => i.LineTotal),
                     items);
             })

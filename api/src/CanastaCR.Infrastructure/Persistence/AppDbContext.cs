@@ -30,6 +30,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<PriceReport>()
             .HasIndex(p => new { p.ProductId, p.StoreId, p.ReportedAt });
 
+        // Optional now — chain-level scraped prices (StoreId null, Chain set instead) aren't
+        // tied to one physical location. See PriceReport.cs and docs/ARCHITECTURE.md section 11.
+        modelBuilder.Entity<PriceReport>()
+            .HasOne(p => p.Store)
+            .WithMany(s => s.PriceReports)
+            .IsRequired(false);
+
         modelBuilder.Entity<Product>()
             .HasIndex(p => p.Barcode)
             .IsUnique()

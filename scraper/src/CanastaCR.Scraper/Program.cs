@@ -1,3 +1,4 @@
+using CanastaCR.Core.Enums;
 using CanastaCR.Scraper.Abstractions;
 using CanastaCR.Scraper.Jobs;
 using CanastaCR.Scraper.Persistence;
@@ -7,14 +8,6 @@ using Hangfire;
 using Hangfire.PostgreSql;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
-
-// Store names — single source of truth shared between scraper registration below and the
-// single-store trigger endpoints, so they can never drift out of sync with each other.
-const string MaxiPaliStore = "MaxiPalí Alajuela";
-const string MasXMenosStore = "Más x Menos La Uruca";
-const string WalmartStore = "Walmart San José";
-const string MegaSuperStore = "MegaSuper Tibás";
-const string PriceSmartStore = "PriceSmart San José";
 
 // Minimal bootstrap logger — only used for errors during host startup, before configuration
 // (and the real, fully-configured logger below) is available.
@@ -90,7 +83,7 @@ builder.Services.AddScoped<IStoreScraper>(sp =>
     var factory = sp.GetRequiredService<IHttpClientFactory>();
     var logger = sp.GetRequiredService<ILogger<VtexScraper>>();
     var baseUrl = scraperConfig["MaxiPaliBaseUrl"] ?? "https://www.maxipali.co.cr";
-    return new VtexScraper(MaxiPaliStore, baseUrl, factory.CreateClient("vtex"), logger);
+    return new VtexScraper(StoreChain.MaxiPali, baseUrl, factory.CreateClient("vtex"), logger);
 });
 
 builder.Services.AddScoped<IStoreScraper>(sp =>
@@ -98,7 +91,7 @@ builder.Services.AddScoped<IStoreScraper>(sp =>
     var factory = sp.GetRequiredService<IHttpClientFactory>();
     var logger = sp.GetRequiredService<ILogger<VtexScraper>>();
     var baseUrl = scraperConfig["MasXMenosBaseUrl"] ?? "https://www.masxmenos.cr";
-    return new VtexScraper(MasXMenosStore, baseUrl, factory.CreateClient("vtex"), logger);
+    return new VtexScraper(StoreChain.MasXMenos, baseUrl, factory.CreateClient("vtex"), logger);
 });
 
 builder.Services.AddScoped<IStoreScraper>(sp =>
@@ -106,7 +99,7 @@ builder.Services.AddScoped<IStoreScraper>(sp =>
     var factory = sp.GetRequiredService<IHttpClientFactory>();
     var logger = sp.GetRequiredService<ILogger<VtexScraper>>();
     var baseUrl = scraperConfig["WalmartBaseUrl"] ?? "https://www.walmart.co.cr";
-    return new VtexScraper(WalmartStore, baseUrl, factory.CreateClient("vtex"), logger);
+    return new VtexScraper(StoreChain.Walmart, baseUrl, factory.CreateClient("vtex"), logger);
 });
 
 builder.Services.AddScoped<IStoreScraper>(sp =>
@@ -149,31 +142,31 @@ api.MapPost("/vtex", (IBackgroundJobClient bgJob, int? maxProducts) =>
 
 api.MapPost("/maxipali", (IBackgroundJobClient bgJob, int? maxProducts) =>
 {
-    bgJob.Enqueue<ScrapeStoreJob>(j => j.RunAsync(MaxiPaliStore, maxProducts, CancellationToken.None));
+    bgJob.Enqueue<ScrapeStoreJob>(j => j.RunAsync(StoreChain.MaxiPali, maxProducts, CancellationToken.None));
     return Results.Accepted("/api/scrape/status", new { message = "MaxiPalí scrape enqueued", maxProducts });
 });
 
 api.MapPost("/masxmenos", (IBackgroundJobClient bgJob, int? maxProducts) =>
 {
-    bgJob.Enqueue<ScrapeStoreJob>(j => j.RunAsync(MasXMenosStore, maxProducts, CancellationToken.None));
+    bgJob.Enqueue<ScrapeStoreJob>(j => j.RunAsync(StoreChain.MasXMenos, maxProducts, CancellationToken.None));
     return Results.Accepted("/api/scrape/status", new { message = "Más x Menos scrape enqueued", maxProducts });
 });
 
 api.MapPost("/walmart", (IBackgroundJobClient bgJob, int? maxProducts) =>
 {
-    bgJob.Enqueue<ScrapeStoreJob>(j => j.RunAsync(WalmartStore, maxProducts, CancellationToken.None));
+    bgJob.Enqueue<ScrapeStoreJob>(j => j.RunAsync(StoreChain.Walmart, maxProducts, CancellationToken.None));
     return Results.Accepted("/api/scrape/status", new { message = "Walmart scrape enqueued", maxProducts });
 });
 
 api.MapPost("/megasuper", (IBackgroundJobClient bgJob, int? maxProducts) =>
 {
-    bgJob.Enqueue<ScrapeStoreJob>(j => j.RunAsync(MegaSuperStore, maxProducts, CancellationToken.None));
+    bgJob.Enqueue<ScrapeStoreJob>(j => j.RunAsync(StoreChain.MegaSuper, maxProducts, CancellationToken.None));
     return Results.Accepted("/api/scrape/status", new { message = "MegaSuper scrape enqueued", maxProducts });
 });
 
 api.MapPost("/pricesmart", (IBackgroundJobClient bgJob, int? maxProducts) =>
 {
-    bgJob.Enqueue<ScrapeStoreJob>(j => j.RunAsync(PriceSmartStore, maxProducts, CancellationToken.None));
+    bgJob.Enqueue<ScrapeStoreJob>(j => j.RunAsync(StoreChain.PriceSmart, maxProducts, CancellationToken.None));
     return Results.Accepted("/api/scrape/status", new { message = "PriceSmart scrape enqueued", maxProducts });
 });
 

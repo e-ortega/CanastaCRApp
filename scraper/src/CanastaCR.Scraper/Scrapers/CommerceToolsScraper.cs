@@ -1,3 +1,4 @@
+using CanastaCR.Core.Enums;
 using CanastaCR.Scraper.Abstractions;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -23,7 +24,8 @@ public class CommerceToolsScraper(HttpClient http, ILogger<CommerceToolsScraper>
     private const string CrAggregateClub = "64"; // country-wide club code, present alongside per-store clubs
     private const int PageSize = 50;
 
-    public string StoreName => "PriceSmart San José";
+    public StoreChain Chain => StoreChain.PriceSmart;
+    public string StoreName => Chain.GetDisplayName();
     public string Platform => "pricesmart";
 
     public async Task<IReadOnlyList<ScrapedProduct>> ScrapeAsync(int? maxProducts = null, CancellationToken ct = default)

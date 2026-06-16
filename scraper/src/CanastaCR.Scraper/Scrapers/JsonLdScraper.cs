@@ -1,5 +1,6 @@
 using AngleSharp;
 using AngleSharp.Dom;
+using CanastaCR.Core.Enums;
 using CanastaCR.Scraper.Abstractions;
 using System.Text.Json;
 using System.Xml;
@@ -16,7 +17,8 @@ public class JsonLdScraper(HttpClient http, ILogger<JsonLdScraper> logger) : ISt
     private const string BaseUrl = "https://www.megasuper.com";
     private static readonly IBrowsingContext AngleSharp = BrowsingContext.New(Configuration.Default);
 
-    public string StoreName => "MegaSuper Tibás";
+    public StoreChain Chain => StoreChain.MegaSuper;
+    public string StoreName => Chain.GetDisplayName();
     public string Platform => "megasuper";
 
     public async Task<IReadOnlyList<ScrapedProduct>> ScrapeAsync(int? maxProducts = null, CancellationToken ct = default)

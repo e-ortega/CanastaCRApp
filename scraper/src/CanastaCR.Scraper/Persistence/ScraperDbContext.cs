@@ -23,6 +23,13 @@ public class ScraperDbContext(DbContextOptions<ScraperDbContext> options) : DbCo
         modelBuilder.Entity<PriceReport>()
             .HasIndex(p => new { p.ProductId, p.StoreId, p.ReportedAt });
 
+        // Optional — the scraper writes chain-level prices (StoreId null, Chain set instead),
+        // never tied to one specific physical Store row. See docs/ARCHITECTURE.md section 11.
+        modelBuilder.Entity<PriceReport>()
+            .HasOne(p => p.Store)
+            .WithMany(s => s.PriceReports)
+            .IsRequired(false);
+
         // Ignore navigation properties that belong to the main app context
         modelBuilder.Entity<Product>()
             .Ignore(p => p.ShoppingListItems)

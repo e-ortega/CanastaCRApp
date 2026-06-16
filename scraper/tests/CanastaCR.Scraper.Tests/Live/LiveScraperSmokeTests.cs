@@ -1,3 +1,4 @@
+using CanastaCR.Core.Enums;
 using CanastaCR.Scraper.Abstractions;
 using CanastaCR.Scraper.Scrapers;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -24,15 +25,15 @@ public class LiveScraperSmokeTests
 
     [Fact]
     public Task MaxiPali_ReturnsAtLeast25ValidProducts() =>
-        AssertVtexStoreWorks("MaxiPalí Alajuela", "https://www.maxipali.co.cr");
+        AssertVtexStoreWorks(StoreChain.MaxiPali, "https://www.maxipali.co.cr");
 
     [Fact]
     public Task MasXMenos_ReturnsAtLeast25ValidProducts() =>
-        AssertVtexStoreWorks("Más x Menos La Uruca", "https://www.masxmenos.cr");
+        AssertVtexStoreWorks(StoreChain.MasXMenos, "https://www.masxmenos.cr");
 
     [Fact]
     public Task Walmart_ReturnsAtLeast25ValidProducts() =>
-        AssertVtexStoreWorks("Walmart San José", "https://www.walmart.co.cr");
+        AssertVtexStoreWorks(StoreChain.Walmart, "https://www.walmart.co.cr");
 
     [Fact]
     public async Task PriceSmart_ReturnsAtLeast25ValidProducts()
@@ -49,11 +50,12 @@ public class LiveScraperSmokeTests
         Assert.All(results, p => Assert.Null(p.Barcode));
     }
 
-    private static async Task AssertVtexStoreWorks(string storeName, string baseUrl)
+    private static async Task AssertVtexStoreWorks(StoreChain chain, string baseUrl)
     {
         using var cts = new CancellationTokenSource(TestTimeout);
         using var http = NewHttpClient();
-        var scraper = new VtexScraper(storeName, baseUrl, http, NullLogger<VtexScraper>.Instance);
+        var scraper = new VtexScraper(chain, baseUrl, http, NullLogger<VtexScraper>.Instance);
+        var storeName = chain.GetDisplayName();
 
         var results = await scraper.ScrapeAsync(MinProductsExpected, cts.Token);
 

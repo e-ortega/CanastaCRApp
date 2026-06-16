@@ -56,6 +56,20 @@ public class ShoppingServiceTests
         db.SaveChanges();
     }
 
+    // Scraped prices are chain-level, not tied to one Store row — see docs/ARCHITECTURE.md
+    // section 11. StoreId is null; Chain is set instead.
+    private static void AddChainPrice(string dbName, Guid productId, StoreChain chain, decimal price)
+    {
+        using var db = DbContextFactory.Create(dbName);
+        db.PriceReports.Add(new PriceReport
+        {
+            Id        = Guid.NewGuid(), ProductId = productId, StoreId = null, Chain = chain,
+            Price     = price, Currency = "CRC", Source = PriceSource.Scraped,
+            ReportedAt = DateTimeOffset.UtcNow, ExpiresAt = DateTimeOffset.UtcNow.AddDays(3)
+        });
+        db.SaveChanges();
+    }
+
     private static ShoppingService CreateService(string dbName) =>
         new(DbContextFactory.Create(dbName));
 
@@ -213,5 +227,26 @@ public class ShoppingServiceTests
         var ok = await service.DeleteListAsync(listId, Guid.NewGuid());
 
         Assert.False(ok);
+    }
+
+    [Fact]
+    public async Task Optimize_RecommendsChainLevelPrice_WithNullStoreId()
+    {
+        var dbName = SeedBase();
+        AddChainPrice(dbName, Product1, StoreChain.Walmart, 700m); // cheaper, chain-level scraped
+        AddPrice(dbName, Product1, StoreA, 900m); // specific MaxiPalí location, user-submitted
+
+        var service = CreateService(dbName);
+        var listId  = await CreateList(service);
+        await service.AddItemAsync(listId, UserId, new AddShoppingListItemDto(Product1));
+
+        var result = await service.OptimizeAsync(listId, UserId);
+
+        Assert.NotNull(result);
+        var group = Assert.Single(result.StoreGroups);
+        Assert.Null(group.StoreId);
+        Assert.Equal("Walmart", group.StoreName);
+        Assert.Equal(StoreChain.Walmart, group.Chain);
+        Assert.Equal(700m, group.GroupTotal);
     }
 }

@@ -37,7 +37,7 @@ public record ShoppingOptimizationResultDto(
 );
 
 public record StoreShoppingGroupDto(
-    Guid StoreId,
+    Guid? StoreId,
     string StoreName,
     StoreChain Chain,
     decimal GroupTotal,
