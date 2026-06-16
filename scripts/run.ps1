@@ -11,6 +11,9 @@
   .\scripts\run.ps1 app:test         # run Flutter unit tests
   .\scripts\run.ps1 app:coverage     # run Flutter tests + generate coverage (lcov)
   .\scripts\run.ps1 scraper:run      # run scraper service (http://localhost:5050/hangfire)
+  .\scripts\run.ps1 scraper:run:local # same as scraper:run, explicit name
+  .\scripts\run.ps1 scraper:run:azure # run scraper against Azure Postgres (needs POSTGRES_ADMIN_PASSWORD)
+  .\scripts\run.ps1 scraper:run:azure -CreateFirewallRule # same, but also check/create this machine's firewall rule first
   .\scripts\run.ps1 scraper:test     # run scraper unit tests (mocked, fast)
   .\scripts\run.ps1 scraper:test:live # run scraper tests against real store websites
   .\scripts\run.ps1 scraper:logs:tail # follow today's local scraper log file live
@@ -19,7 +22,10 @@
   .\scripts\run.ps1 coverage         # generate coverage for both (api + app)
   .\scripts\run.ps1 help             # show this list
 #>
-param([string]$Command = 'help')
+param(
+    [string]$Command = 'help',
+    [switch]$CreateFirewallRule  # scraper:run:azure: check/create this machine's Azure Postgres firewall rule first
+)
 
 $Root       = Split-Path $PSScriptRoot -Parent
 $Flutter    = if ($env:CANASTACR_FLUTTER) {
@@ -41,6 +47,57 @@ function Assert-EnvVar([string]$Name) {
         Write-Error "Missing env var: $Name — set it before running this command."
         exit 1
     }
+}
+
+function Get-MyPublicIp {
+    try {
+        return (Invoke-RestMethod -Uri 'https://api.ipify.org' -TimeoutSec 5).Trim()
+    } catch {
+        Write-Error "Could not determine your public IP (api.ipify.org unreachable). Add the firewall rule manually — see docs/ARCHITECTURE.md section 12."
+        exit 1
+    }
+}
+
+function ConvertTo-IpUInt32([string]$Ip) {
+    $bytes = [System.Net.IPAddress]::Parse($Ip).GetAddressBytes()
+    if ([BitConverter]::IsLittleEndian) { [Array]::Reverse($bytes) }
+    return [BitConverter]::ToUInt32($bytes, 0)
+}
+
+# Cross-platform (pwsh on Windows or Mac): checks whether this machine's current public IP is
+# already allowed through canastacr-db-prod's firewall, and if not, creates a per-machine rule
+# (named after the hostname, so a Mac and a Windows box each get their own rule instead of
+# colliding — and az's firewall-rule create upserts by name, so a machine whose IP changes
+# between runs just updates its own rule rather than piling up new ones).
+function Ensure-AzurePostgresFirewallRuleForMyIp {
+    Assert-EnvVar 'AZURE_RESOURCE_GROUP'
+    if (-not (Get-Command az -ErrorAction SilentlyContinue)) {
+        Write-Error "Azure CLI ('az') not found on PATH. Install it, run 'az login', then retry."
+        exit 1
+    }
+
+    $myIp = Get-MyPublicIp
+    $myIpNum = ConvertTo-IpUInt32 $myIp
+
+    $rules = az postgres flexible-server firewall-rule list `
+        --resource-group $env:AZURE_RESOURCE_GROUP --name canastacr-db-prod -o json | ConvertFrom-Json
+
+    $covered = $rules | Where-Object {
+        $myIpNum -ge (ConvertTo-IpUInt32 $_.startIpAddress) -and $myIpNum -le (ConvertTo-IpUInt32 $_.endIpAddress)
+    }
+
+    if ($covered) {
+        Write-Host "  Firewall: $myIp already allowed (rule '$($covered[0].name)')" -ForegroundColor DarkGray
+        return
+    }
+
+    $hostName = ([System.Net.Dns]::GetHostName() -replace '[^a-zA-Z0-9-]', '-')
+    $ruleName = "AllowMyIP-$hostName"
+
+    Write-Host "  Firewall: $myIp not allowed yet — creating rule '$ruleName'" -ForegroundColor Yellow
+    az postgres flexible-server firewall-rule create --resource-group $env:AZURE_RESOURCE_GROUP `
+        --name canastacr-db-prod --rule-name $ruleName --start-ip-address $myIp --end-ip-address $myIp | Out-Null
+    Write-Host "  Firewall: rule '$ruleName' -> $myIp" -ForegroundColor Green
 }
 
 switch ($Command) {
@@ -218,6 +275,25 @@ switch ($Command) {
         dotnet run --project $ScraperSrc --urls "http://localhost:5050"
     }
 
+    'scraper:run:local' {
+        Write-Host "▶ Running scraper against LOCAL Postgres (http://localhost:5050/hangfire)" -ForegroundColor Cyan
+        dotnet run --project $ScraperSrc --urls "http://localhost:5050"
+    }
+
+    'scraper:run:azure' {
+        Write-Host "▶ Running scraper against AZURE Postgres (canastacr-db-prod) — http://localhost:5050/hangfire" -ForegroundColor Yellow
+        Assert-EnvVar 'POSTGRES_ADMIN_PASSWORD'
+        if ($CreateFirewallRule) {
+            Ensure-AzurePostgresFirewallRuleForMyIp
+        } else {
+            Write-Host "  Firewall: skipped (pass -CreateFirewallRule to check/create it if this fails to connect)" -ForegroundColor DarkGray
+        }
+        # Same connection string shape infra/modules/appservice.bicep generates for the API,
+        # so a scrape run here behaves identically to one running inside Azure.
+        $env:ConnectionStrings__DefaultConnection = "Host=canastacr-db-prod.postgres.database.azure.com;Database=canastacr;Username=canastacradmin;Password=$($env:POSTGRES_ADMIN_PASSWORD);SSL Mode=Require;Trust Server Certificate=true"
+        dotnet run --project $ScraperSrc --urls "http://localhost:5050"
+    }
+
     'scraper:build' {
         Write-Host "▶ Building scraper (Release)" -ForegroundColor Cyan
         dotnet build $ScraperSln --configuration Release
@@ -311,7 +387,10 @@ switch ($Command) {
         Write-Host "    app:analyze   flutter analyze"
         Write-Host ""
         Write-Host "  Scraper" -ForegroundColor Yellow
-        Write-Host "    scraper:run        Run scraper service (port 5050, /hangfire dashboard)"
+        Write-Host "    scraper:run        Run scraper against LOCAL Postgres (port 5050, /hangfire dashboard)"
+        Write-Host "    scraper:run:local  Same as scraper:run, explicit name"
+        Write-Host "    scraper:run:azure  Run scraper against AZURE Postgres (needs `$env:POSTGRES_ADMIN_PASSWORD, see below)"
+        Write-Host "      -CreateFirewallRule  Add: check/create this machine's firewall rule first (only needed once per machine/network)"
         Write-Host "    scraper:build      Build scraper (Release)"
         Write-Host "    scraper:test       Run scraper xUnit tests (mocked, fast, no network)"
         Write-Host "    scraper:test:live  Run live tests against real store sites (~25 products/store)"
@@ -335,11 +414,17 @@ switch ($Command) {
         Write-Host "    test          Run backend + Flutter tests"
         Write-Host "    coverage      Run both + write coverage files for Coverage Gutters"
         Write-Host ""
-        Write-Host "  Env vars for infra commands:" -ForegroundColor DarkGray
+        Write-Host "  Env vars for infra + scraper:run:azure commands:" -ForegroundColor DarkGray
         Write-Host "    `$env:AZURE_RESOURCE_GROUP   = 'canastacr-rg'"
         Write-Host "    `$env:AZURE_LOCATION         = 'canadacentral'  # optional, default: canadacentral"
-        Write-Host "    `$env:POSTGRES_ADMIN_PASSWORD = '...'"
+        Write-Host "    `$env:POSTGRES_ADMIN_PASSWORD = '...'  # also used by scraper:run:azure"
         Write-Host "    `$env:JWT_SECRET              = '...'"
+        Write-Host ""
+        Write-Host "  scraper:run:azure -CreateFirewallRule auto-detects your public IP and adds/updates" -ForegroundColor DarkGray
+        Write-Host "  a per-machine firewall rule on canastacr-db-prod via az CLI — needs 'az login' done" -ForegroundColor DarkGray
+        Write-Host "  first. Only needed once per machine/network (omit it on later runs to skip the check)." -ForegroundColor DarkGray
+        Write-Host "  Works the same way on Windows or Mac (pwsh ./scripts/run.ps1 ...). See" -ForegroundColor DarkGray
+        Write-Host "  docs/ARCHITECTURE.md section 12 for details." -ForegroundColor DarkGray
         Write-Host ""
     }
 }

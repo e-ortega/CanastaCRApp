@@ -554,7 +554,7 @@ Or open `scraper/src/CanastaCR.Scraper/logs/scrape-YYYYMMDD.log` directly for a 
 
 ### 9.4 Azure logging — not yet applicable to the scraper
 
-The existing `.\scripts\run.ps1 log:tail` (`az webapp log tail`) streams logs for the **main API**, which is deployed to Azure App Service. The scraper is **local-only** today (section 4's decision: start local, add an Azure Container Apps Job later). When that move happens, this section should be updated with the equivalent Azure-side command (likely `az containerapp logs show` or Azure Monitor/Log Analytics querying, depending on which Azure compute option is chosen) — until then, section 9.1–9.3 above is the complete operational story.
+The existing `.\scripts\run.ps1 log:tail` (`az webapp log tail`) streams logs for the **main API**, which is deployed to Azure App Service. The scraper's *compute* is still **local-only** today (section 4's decision: start local, add an Azure Container Apps Job later) — section 12 below only changes where it writes data to, not where it runs. When the compute itself moves to Azure, this section should be updated with the equivalent Azure-side log command (likely `az containerapp logs show` or Azure Monitor/Log Analytics querying) — until then, section 9.1–9.3 above is the complete operational story for runs against either database.
 
 ---
 
@@ -636,3 +636,45 @@ Scraped prices (`PriceReport.Source == Scraped`) are now **chain-level**: `Store
 ### Why this is safe today and revisit-able later
 
 This assumes every chain prices uniformly nationwide. That's confirmed for the four chains actually scraped (VTEX × 3, PriceSmart) but **not yet confirmed for AutoMercado or MegaSuper** (AutoMercado is still un-scraped — section 1; MegaSuper's enumeration is still broken — section 7.2). If either turns out to genuinely vary by location once scraped, the model already supports it without another migration: a scraper for that chain can simply write `StoreId` (a real location) instead of `Chain`, row by row, exactly like a user submission does. The chain-level path and the store-level path coexist in the same table by design — nothing about this decision forecloses per-location pricing if reality turns out to need it.
+
+---
+
+## 12. Running the Scraper Against Azure Instead of Local
+
+**Date:** 2026-06-16
+**Status:** Implemented — `scraper:run:azure` in `scripts/run.ps1`
+
+### Why
+
+All scraped data so far lives only in the local Postgres instance (`canastacr_dev`). Rather than `pg_dump`/`pg_restore` that local snapshot into the Azure instance (`canastacr-db-prod`), the simpler path is to point the scraper's connection string at Azure and let it scrape fresh — the data is reproducible (it's a snapshot of public store catalogs, not user-generated), so there's nothing precious about the local copy worth preserving byte-for-byte.
+
+Note this only moves *where the scraper writes to*. The scraper process itself still runs locally — see section 9.4 for the (separate, not-yet-needed) question of moving the scraper's compute into Azure.
+
+### The firewall problem
+
+`infra/modules/postgres.bicep` only opens one firewall rule on `canastacr-db-prod`: `AllowAzureServices` (the special `0.0.0.0`–`0.0.0.0` rule that permits traffic from inside Azure, e.g. the App Service running the main API). A laptop running the scraper locally is outside Azure, so by default it can't reach the database at all — confirmed by reading the bicep directly rather than assuming, since this is exactly the kind of gap that fails as a confusing connection timeout with no clue why.
+
+### The fix: opt-in, auto-checked firewall rule
+
+`scraper:run:azure -CreateFirewallRule` calls `Ensure-AzurePostgresFirewallRuleForMyIp` (defined near `Assert-EnvVar` in `scripts/run.ps1`) before starting the scraper:
+
+1. Detects this machine's current public IP via `https://api.ipify.org`.
+2. Lists `canastacr-db-prod`'s existing firewall rules via `az postgres flexible-server firewall-rule list` and checks numerically whether the current IP already falls inside any rule's start/end range.
+3. If not covered, creates a rule named `AllowMyIP-<hostname>` (hostname via `[System.Net.Dns]::GetHostName()`, sanitized to Azure's allowed rule-name characters). `az ... firewall-rule create` upserts by name, so re-running from the same machine after its IP changes (new network, new day, dynamic IP) updates that machine's rule in place instead of creating duplicates.
+
+The `-CreateFirewallRule` switch is opt-in rather than automatic on every run — once a machine's IP is allowed, most subsequent runs don't need the `az` round-trip at all (and dynamic IPs don't change *that* often). Plain `scraper:run:azure` skips the check and prints a one-line reminder of the flag in case the connection then fails. Add `-CreateFirewallRule` again any time the network changes (new location, ISP reassigns the IP, new machine).
+
+Naming the rule per-machine (rather than one shared `AllowMyIP` rule) matters specifically because this is used from **both a Windows machine and a Mac** — each gets its own rule, so connecting from one never evicts the other's access. `scripts/run.ps1` is plain PowerShell (`pwsh`), which runs identically on both: `.\scripts\run.ps1 scraper:run:azure` on Windows, `pwsh ./scripts/run.ps1 scraper:run:azure` on Mac.
+
+Requires `az login` done beforehand and `$env:AZURE_RESOURCE_GROUP` / `$env:POSTGRES_ADMIN_PASSWORD` set (same env vars the `infra:*` commands already use — see the `help` command's env var list). Nothing here ever prints the database password; only IPs and rule names are logged.
+
+### What changed
+
+| File | Change |
+|---|---|
+| `scraper/src/CanastaCR.Scraper/appsettings.json` | Added `"System.Net.Http.HttpClient": "Warning"` to `Logging:LogLevel` — `AddHttpClient`'s default logging handler emits Information-level lines for every single outbound request/response (vtex/megasuper/pricesmart clients), which across a full catalog scrape was drowning out the actually-useful log lines from section 9. Same pattern as the existing `Microsoft.EntityFrameworkCore`/`Hangfire` suppressions. |
+| `scripts/run.ps1` | New `scraper:run:local` (explicit alias of the existing `scraper:run`) and `scraper:run:azure` commands, plus `Get-MyPublicIp` / `ConvertTo-IpUInt32` / `Ensure-AzurePostgresFirewallRuleForMyIp` helpers. |
+
+### Known limitation
+
+Stale per-machine rules are never cleaned up automatically (e.g., a machine retired or permanently switching networks leaves its old rule behind). Low-risk — it only ever allows a single specific IP that's no longer in use — but worth a periodic `az postgres flexible-server firewall-rule list` glance if the rule list grows noticeably.
