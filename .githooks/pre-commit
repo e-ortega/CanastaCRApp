@@ -7,10 +7,12 @@ STAGED=$(git diff --cached --name-only)
 
 RUN_API=false
 RUN_APP=false
+RUN_SCRAPER=false
 
 for file in $STAGED; do
-  case "$file" in api/*) RUN_API=true ;; esac
-  case "$file" in app/*) RUN_APP=true ;; esac
+  case "$file" in api/*)     RUN_API=true ;;     esac
+  case "$file" in app/*)     RUN_APP=true ;;     esac
+  case "$file" in scraper/*) RUN_SCRAPER=true ;; esac
 done
 
 if [ "$RUN_API" = true ]; then
@@ -38,6 +40,16 @@ if [ "$RUN_APP" = true ]; then
     exit 1
   fi
   echo "✓ Flutter tests passed"
+fi
+
+if [ "$RUN_SCRAPER" = true ]; then
+  echo "▶ Scraper tests (pre-commit)..."
+  pwsh -NonInteractive -File "$ROOT/scripts/run.ps1" scraper:test
+  if [ $? -ne 0 ]; then
+    echo "❌ Scraper tests failed — commit blocked."
+    exit 1
+  fi
+  echo "✓ Scraper tests passed"
 fi
 
 exit 0

@@ -17,8 +17,8 @@ Core challenge: **data population** — not all stores have consistent or scrapa
 | AutoMercado | automercado.co.cr | Full online store — most scrapable |
 | Más x Menos | masxmenos.cr | Walmart CR subsidiary |
 | MaxiPalí | maxipali.co.cr | Walmart CR subsidiary |
-| MegaSuper | megasuper.net | Online store available |
-| PriceSmart | pricesmart.com | Membership club, may require login |
+| MegaSuper | megasuper.com | Next.js SSR, JSON-LD prices baked in, EAN in URL |
+| PriceSmart | pricesmart.com/en-cr | Nuxt.js + CommerceTools, open API, 12K products |
 
 10 store locations are seeded in `AppDbContext.SeedStores()` via `HasData`.
 
@@ -412,6 +412,25 @@ DATABASE_URL                          (PostgreSQL connection string, for EF migr
 ### EF Core migrations
 Already generated at `api/src/CanastaCR.Infrastructure/Migrations/`.
 Deploy step runs: `dotnet ef database update` against production PostgreSQL connection string.
+
+---
+
+## Architectural journal
+
+`docs/ARCHITECTURE.md` is a living architectural decision log. **Update it automatically** whenever:
+- A meaningful architectural decision is made (tech choice, schema change, scraper strategy, infra option chosen)
+- A new API endpoint or external service is discovered and confirmed working
+- A decision is reversed or superseded
+- A new future opportunity or product idea is discussed
+
+When updating:
+- Add to the relevant existing section if one fits; create a new section if not
+- Include: what was decided, why, what was ruled out, date
+- Add new open questions to section 6 as they surface
+- Do NOT rewrite existing entries — append or extend them
+- The owner may also edit this file manually at any time
+
+**Do not wait to be asked** — if you make an architectural decision during a session, update the journal before ending the session.
 
 ---
 

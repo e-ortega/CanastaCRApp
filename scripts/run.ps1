@@ -10,6 +10,8 @@
   .\scripts\run.ps1 app:build        # flutter build web (Release)
   .\scripts\run.ps1 app:test         # run Flutter unit tests
   .\scripts\run.ps1 app:coverage     # run Flutter tests + generate coverage (lcov)
+  .\scripts\run.ps1 scraper:run      # run scraper service (http://localhost:5050/hangfire)
+  .\scripts\run.ps1 scraper:test     # run scraper unit tests
   .\scripts\run.ps1 infra:validate   # validate Bicep without deploying
   .\scripts\run.ps1 infra:deploy     # deploy Bicep to Azure (prod)
   .\scripts\run.ps1 coverage         # generate coverage for both (api + app)
@@ -17,12 +19,14 @@
 #>
 param([string]$Command = 'help')
 
-$Root    = Split-Path $PSScriptRoot -Parent
-$Flutter = 'C:\Users\eorte\source\repos\flutter\bin\flutter'
-$ApiSrc  = Join-Path $Root 'api\src\CanastaCR.Api'
-$ApiSln  = Join-Path $Root 'api'
-$AppDir  = Join-Path $Root 'app'
-$InfraDir= Join-Path $Root 'infra'
+$Root       = Split-Path $PSScriptRoot -Parent
+$Flutter    = 'C:\Users\eorte\source\repos\flutter\bin\flutter'
+$ApiSrc     = Join-Path $Root 'api\src\CanastaCR.Api'
+$ApiSln     = Join-Path $Root 'api'
+$AppDir     = Join-Path $Root 'app'
+$InfraDir   = Join-Path $Root 'infra'
+$ScraperSrc = Join-Path $Root 'scraper\src\CanastaCR.Scraper'
+$ScraperSln = Join-Path $Root 'scraper'
 
 function Assert-EnvVar([string]$Name) {
     if (-not (Get-Item "env:$Name" -ErrorAction SilentlyContinue)) {
@@ -195,6 +199,27 @@ switch ($Command) {
         az resource delete --ids $ResourceId
     }
 
+    # ── Scraper ───────────────────────────────────────────────────────────
+    'scraper' {
+        Write-Host "▶ Running scraper (http://localhost:5050/hangfire)" -ForegroundColor Cyan
+        dotnet run --project $ScraperSrc --urls "http://localhost:5050"
+    }
+
+    'scraper:run' {
+        Write-Host "▶ Running scraper (http://localhost:5050/hangfire)" -ForegroundColor Cyan
+        dotnet run --project $ScraperSrc --urls "http://localhost:5050"
+    }
+
+    'scraper:build' {
+        Write-Host "▶ Building scraper (Release)" -ForegroundColor Cyan
+        dotnet build $ScraperSln --configuration Release
+    }
+
+    'scraper:test' {
+        Write-Host "▶ Running scraper tests" -ForegroundColor Cyan
+        dotnet test "$ScraperSln\tests\CanastaCR.Scraper.Tests" --logger "console;verbosity=normal"
+    }
+
     # ── Git hooks ─────────────────────────────────────────────────────────
     'hooks:install' {
         Write-Host "▶ Installing git hooks from .githooks/" -ForegroundColor Cyan
@@ -258,6 +283,11 @@ switch ($Command) {
         Write-Host "    app:test      Run unit tests (30)"
         Write-Host "    app:coverage  Run tests + write app/coverage/lcov.info"
         Write-Host "    app:analyze   flutter analyze"
+        Write-Host ""
+        Write-Host "  Scraper" -ForegroundColor Yellow
+        Write-Host "    scraper:run   Run scraper service (port 5050, /hangfire dashboard)"
+        Write-Host "    scraper:build Build scraper (Release)"
+        Write-Host "    scraper:test  Run scraper xUnit tests (12)"
         Write-Host ""
         Write-Host "  Infrastructure" -ForegroundColor Yellow
         Write-Host "    infra:validate         Validate Bicep (no deploy)"
