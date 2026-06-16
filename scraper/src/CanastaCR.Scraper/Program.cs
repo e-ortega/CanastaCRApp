@@ -96,34 +96,35 @@ app.UseHangfireDashboard("/hangfire");
 // Trigger API
 var api = app.MapGroup("/api/scrape");
 
-api.MapPost("/", (IBackgroundJobClient bgJob) =>
+// maxProducts caps each store's scrape — handy for a quick smoke test before a full nightly run
+api.MapPost("/", (IBackgroundJobClient bgJob, int? maxProducts) =>
 {
-    bgJob.Enqueue<ScrapeAllStoresJob>(j => j.RunAsync(CancellationToken.None));
-    return Results.Accepted("/api/scrape/status", new { message = "Scrape job enqueued — all stores" });
+    bgJob.Enqueue<ScrapeAllStoresJob>(j => j.RunAsync(maxProducts, null, CancellationToken.None));
+    return Results.Accepted("/api/scrape/status", new { message = "Scrape job enqueued — all stores", maxProducts });
 });
 
-api.MapPost("/vtex", (IBackgroundJobClient bgJob) =>
+api.MapPost("/vtex", (IBackgroundJobClient bgJob, int? maxProducts) =>
 {
-    bgJob.Enqueue<ScrapeAllStoresJob>(j => j.RunAsync(CancellationToken.None));
-    return Results.Accepted("/api/scrape/status", new { message = "VTEX scrape enqueued (Walmart + MaxiPalí + Más x Menos)" });
+    bgJob.Enqueue<ScrapeAllStoresJob>(j => j.RunAsync(maxProducts, "vtex", CancellationToken.None));
+    return Results.Accepted("/api/scrape/status", new { message = "VTEX scrape enqueued (Walmart + MaxiPalí + Más x Menos)", maxProducts });
 });
 
-api.MapPost("/walmart", (IBackgroundJobClient bgJob) =>
+api.MapPost("/walmart", (IBackgroundJobClient bgJob, int? maxProducts) =>
 {
-    bgJob.Enqueue<ScrapeAllStoresJob>(j => j.RunAsync(CancellationToken.None));
-    return Results.Accepted("/api/scrape/status", new { message = "Walmart scrape enqueued" });
+    bgJob.Enqueue<ScrapeAllStoresJob>(j => j.RunAsync(maxProducts, "vtex", CancellationToken.None));
+    return Results.Accepted("/api/scrape/status", new { message = "Walmart scrape enqueued (note: shares the VTEX platform filter with MaxiPalí/Más x Menos — use POST /api/scrape with a store-specific test in the live suite for single-store isolation)", maxProducts });
 });
 
-api.MapPost("/megasuper", (IBackgroundJobClient bgJob) =>
+api.MapPost("/megasuper", (IBackgroundJobClient bgJob, int? maxProducts) =>
 {
-    bgJob.Enqueue<ScrapeAllStoresJob>(j => j.RunAsync(CancellationToken.None));
-    return Results.Accepted("/api/scrape/status", new { message = "MegaSuper scrape enqueued" });
+    bgJob.Enqueue<ScrapeAllStoresJob>(j => j.RunAsync(maxProducts, "megasuper", CancellationToken.None));
+    return Results.Accepted("/api/scrape/status", new { message = "MegaSuper scrape enqueued", maxProducts });
 });
 
-api.MapPost("/pricesmart", (IBackgroundJobClient bgJob) =>
+api.MapPost("/pricesmart", (IBackgroundJobClient bgJob, int? maxProducts) =>
 {
-    bgJob.Enqueue<ScrapeAllStoresJob>(j => j.RunAsync(CancellationToken.None));
-    return Results.Accepted("/api/scrape/status", new { message = "PriceSmart scrape enqueued" });
+    bgJob.Enqueue<ScrapeAllStoresJob>(j => j.RunAsync(maxProducts, "pricesmart", CancellationToken.None));
+    return Results.Accepted("/api/scrape/status", new { message = "PriceSmart scrape enqueued", maxProducts });
 });
 
 api.MapGet("/status", () =>
@@ -139,10 +140,10 @@ api.MapGet("/status", () =>
     });
 });
 
-// Nightly recurring job — runs at 4 AM Costa Rica time
+// Nightly recurring job — runs at 4 AM Costa Rica time, full catalog, all stores
 RecurringJob.AddOrUpdate<ScrapeAllStoresJob>(
     "nightly-scrape",
-    job => job.RunAsync(CancellationToken.None),
+    job => job.RunAsync(null, null, CancellationToken.None),
     scraperConfig["CronSchedule"] ?? "0 4 * * *",
     new RecurringJobOptions { TimeZone = TimeZoneInfo.FindSystemTimeZoneById("America/Costa_Rica") });
 

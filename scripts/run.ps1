@@ -11,7 +11,8 @@
   .\scripts\run.ps1 app:test         # run Flutter unit tests
   .\scripts\run.ps1 app:coverage     # run Flutter tests + generate coverage (lcov)
   .\scripts\run.ps1 scraper:run      # run scraper service (http://localhost:5050/hangfire)
-  .\scripts\run.ps1 scraper:test     # run scraper unit tests
+  .\scripts\run.ps1 scraper:test     # run scraper unit tests (mocked, fast)
+  .\scripts\run.ps1 scraper:test:live # run scraper tests against real store websites
   .\scripts\run.ps1 infra:validate   # validate Bicep without deploying
   .\scripts\run.ps1 infra:deploy     # deploy Bicep to Azure (prod)
   .\scripts\run.ps1 coverage         # generate coverage for both (api + app)
@@ -216,8 +217,13 @@ switch ($Command) {
     }
 
     'scraper:test' {
-        Write-Host "▶ Running scraper tests" -ForegroundColor Cyan
-        dotnet test "$ScraperSln\tests\CanastaCR.Scraper.Tests" --logger "console;verbosity=normal"
+        Write-Host "▶ Running scraper tests (mocked — fast, no network)" -ForegroundColor Cyan
+        dotnet test "$ScraperSln\tests\CanastaCR.Scraper.Tests" --filter "Category!=Live" --logger "console;verbosity=normal"
+    }
+
+    'scraper:test:live' {
+        Write-Host "▶ Running scraper LIVE tests (hits real store websites — ~25 products/store)" -ForegroundColor Cyan
+        dotnet test "$ScraperSln\tests\CanastaCR.Scraper.Tests" --filter "Category=Live" --logger "console;verbosity=normal"
     }
 
     # ── Git hooks ─────────────────────────────────────────────────────────
@@ -285,9 +291,10 @@ switch ($Command) {
         Write-Host "    app:analyze   flutter analyze"
         Write-Host ""
         Write-Host "  Scraper" -ForegroundColor Yellow
-        Write-Host "    scraper:run   Run scraper service (port 5050, /hangfire dashboard)"
-        Write-Host "    scraper:build Build scraper (Release)"
-        Write-Host "    scraper:test  Run scraper xUnit tests (12)"
+        Write-Host "    scraper:run        Run scraper service (port 5050, /hangfire dashboard)"
+        Write-Host "    scraper:build      Build scraper (Release)"
+        Write-Host "    scraper:test       Run scraper xUnit tests (mocked, fast, no network)"
+        Write-Host "    scraper:test:live  Run live tests against real store sites (~25 products/store)"
         Write-Host ""
         Write-Host "  Infrastructure" -ForegroundColor Yellow
         Write-Host "    infra:validate         Validate Bicep (no deploy)"

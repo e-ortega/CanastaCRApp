@@ -13,16 +13,18 @@ public class PriceWriterService(
 {
     private static readonly TimeSpan PriceExpiry = TimeSpan.FromDays(3);
 
-    public async Task WriteAsync(string storeName, IReadOnlyList<ScrapedProduct> products, CancellationToken ct = default)
+    public async Task<WriteResult> WriteAsync(string storeName, IReadOnlyList<ScrapedProduct> products, CancellationToken ct = default)
     {
         var store = await db.Stores.FirstOrDefaultAsync(s => s.Name == storeName, ct);
         if (store is null)
         {
             logger.LogWarning("Store '{StoreName}' not found in database — skipping write", storeName);
-            return;
+            return new WriteResult(Written: 0, Skipped: products.Count, Failed: 0);
         }
 
         var written = 0;
+        var skipped = 0;
+        var failed = 0;
         var now = DateTimeOffset.UtcNow;
 
         foreach (var scraped in products)
@@ -37,6 +39,7 @@ public class PriceWriterService(
                 if (!scraped.IsAvailable)
                 {
                     logger.LogDebug("Product '{Name}' unavailable at {Store} — skipping price report", scraped.Name, storeName);
+                    skipped++;
                     continue;
                 }
 
@@ -65,10 +68,14 @@ public class PriceWriterService(
             catch (Exception ex)
             {
                 logger.LogError(ex, "Failed to write price for '{Name}' at {Store}", scraped.Name, storeName);
+                failed++;
             }
         }
 
         await db.SaveChangesAsync(ct);
-        logger.LogInformation("{Store}: finished — {Written}/{Total} prices written", storeName, written, products.Count);
+        logger.LogInformation("{Store}: finished — {Written} written, {Skipped} skipped, {Failed} failed (of {Total})",
+            storeName, written, skipped, failed, products.Count);
+
+        return new WriteResult(written, skipped, failed);
     }
 }

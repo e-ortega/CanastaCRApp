@@ -468,3 +468,10 @@ To disable: `.\scripts\run.ps1 hooks:uninstall`
 - Keep `SeedSampleData()` in `Program.cs` idempotent (`if (await db.Products.AnyAsync()) return;`)
 - API DTO changes must be reflected in Flutter models (`app/lib/core/models/`)
 - New API endpoints need the corresponding Flutter API client call in `api_client.dart`
+
+
+### Competition Apps
+- I have found i'm not the one doing this idea, we should take this into consideration and develop a strategy to take advatange or to differentiate from them
+- https://www.mimejorcompracr.go.cr/
+- https://www.ahorraya.app/
+- https://www.buscadorprecios.com/

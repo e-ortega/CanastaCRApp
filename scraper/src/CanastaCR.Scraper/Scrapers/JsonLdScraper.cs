@@ -17,8 +17,9 @@ public class JsonLdScraper(HttpClient http, ILogger<JsonLdScraper> logger) : ISt
     private static readonly IBrowsingContext AngleSharp = BrowsingContext.New(Configuration.Default);
 
     public string StoreName => "MegaSuper Tibás";
+    public string Platform => "megasuper";
 
-    public async Task<IReadOnlyList<ScrapedProduct>> ScrapeAsync(CancellationToken ct = default)
+    public async Task<IReadOnlyList<ScrapedProduct>> ScrapeAsync(int? maxProducts = null, CancellationToken ct = default)
     {
         logger.LogInformation("MegaSuper: starting JSON-LD scrape");
 
@@ -30,6 +31,7 @@ public class JsonLdScraper(HttpClient http, ILogger<JsonLdScraper> logger) : ISt
         foreach (var url in productUrls)
         {
             if (ct.IsCancellationRequested) break;
+            if (maxProducts.HasValue && results.Count >= maxProducts.Value) break;
 
             try
             {

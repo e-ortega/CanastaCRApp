@@ -14,6 +14,10 @@
 4. [Scraper as Microservice / Data Product](#4-scraper-as-microservice--data-product)
 5. [Future Opportunities & SaaS Ideas](#5-future-opportunities--saas-ideas)
 6. [Open Questions & Things to Revisit](#6-open-questions--things-to-revisit)
+7. [Incident: First Production Run Wrote Zero Rows](#7-incident-first-production-run-wrote-zero-rows)
+   - [7.1 PriceSmart real schema (reference)](#71-pricesmart-real-schema-reference)
+   - [7.2 MegaSuper research findings — enumeration still broken, deferred](#72-megasuper-research-findings-2026-06-16--enumeration-still-broken-deferred)
+8. [Live Test Framework](#8-live-test-framework)
 
 ---
 
@@ -35,6 +39,8 @@
 
 ### Confirmed API endpoints (no auth, tested)
 
+> **2026-06-16 correction:** the schemas documented below for PriceSmart and MegaSuper were wrong, and the VTEX EAN location was wrong — none were re-verified against a raw response before the scraper was implemented. The implementation built on these notes silently scraped zero rows from every store on its first run. See [Section 7](#7-incident-first-production-run-wrote-zero-rows) for the live-confirmed corrections. The blocks below are kept as-found (with corrections noted inline) so the mistake stays visible.
+
 **MaxiPalí & Más x Menos (VTEX):**
 ```
 GET https://www.maxipali.co.cr/api/catalog_system/pub/category/tree/3
@@ -43,6 +49,9 @@ GET https://www.maxipali.co.cr/api/catalog_system/pub/category/tree/3
 GET https://www.maxipali.co.cr/api/catalog_system/pub/products/search
     ?fq=C:{categoryId}&_from=0&_to=49
     → paginated products with EAN, Price, ListPrice, brand, images, IsAvailable
+    → CORRECTION (2026-06-16): "EAN" here is NOT a top-level product field.
+      It only exists at items[0].ean (per-SKU). Top-level product object has
+      no "ean" key at all — confirmed live against maxipali.co.cr.
 
 # Same endpoints work for masxmenos.cr and walmart.co.cr — same VTEX platform
 # walmart.co.cr confirmed 2026-06-15: category tree returns 19 top-level categories
@@ -58,6 +67,20 @@ POST https://www.pricesmart.com/api/ct/getProduct
 POST https://www.pricesmart.com/api/ct/getProduct
      { "slug": "members-selection-100-pure-sunflower-oil-5-l-1-32-gal-167401", "country": "CR" }
      → single product with price
+
+# CORRECTION (2026-06-16): the response is NOT { "results": [...] } at the root.
+# Live-confirmed real shape:
+#   { "data": { "products": { "offset", "count", "total": 12021, "results": [
+#       { "id", "masterData": { "current": {
+#           "slug": "<plain string, not a localized map>",
+#           "name": "<plain string, not a localized map>",
+#           "allVariants": [ { "id", "sku", "price": null (sample), "attributesRaw": [...] } ]
+#       } } }
+#   ] } } }
+# RESOLVED 2026-06-16 — see section 7.1 for the full schema reference:
+# price lives in the "unit_price" attributesRaw entry (JSON-string-encoded,
+# per-country/per-club), never as a direct field. No EAN/UPC exists anywhere
+# in the product data (confirmed across custom_attributes, all locales).
 ```
 
 **MegaSuper (Next.js SSR JSON-LD):**
@@ -72,6 +95,17 @@ GET https://www.megasuper.com/p/{slug}-{ean}
 
 # Product enumeration: GET /sitemap.xml → extract all /p/ URLs
 # EAN is the last segment of the URL slug — no separate field needed
+#
+# CORRECTION (2026-06-16): /sitemap.xml now returns the Next.js SPA HTML shell,
+# not XML — same response as /robots.txt, both apparently hit a catch-all route.
+# UPDATE (2026-06-16, after deeper research — see section 7.2): the JSON-LD
+# extraction itself turned out to still work fine; the script tag just has its
+# attributes in a different order than a naive regex expected, but AngleSharp's
+# real CSS selector handles that correctly. The ONLY confirmed blocker is
+# enumeration — no working sitemap or server-rendered link source was found.
+# MegaSuper appears to be migrating to the Instaleap platform; finding the real
+# data source needs a browser with devtools, not curl. Deferred alongside
+# AutoMercado as a Playwright follow-up.
 ```
 
 **AutoMercado:**
@@ -331,11 +365,134 @@ When scraper is stable and covering 4+ stores consistently (3–6 months of clea
 
 | Question | Context | Priority |
 |---|---|---|
-| PriceSmart EAN field | Their SKU (`167401`) is internal, not EAN. Do their product attributes contain a UPC/EAN? Needs one product attribute inspection. | High — affects deduplication |
+| ~~PriceSmart EAN field~~ | Resolved 2026-06-16 — confirmed no EAN/UPC field exists anywhere in PriceSmart's product data (checked custom_attributes across all locales). PriceSmart products always go through fuzzy matching. | Closed |
 | AutoMercado product page structure | Need to Playwright-render a product page to see field names, EAN availability, and reliable CSS selectors | Medium — deferred to Playwright phase |
-| MegaSuper sitemap completeness | Confirmed `sitemap.xml` exists. Does it list ALL products or just featured ones? | High — affects enumeration strategy |
+| MegaSuper enumeration strategy | No working sitemap or server-rendered link source found (section 7.2). Needs Playwright/devtools investigation to find the real data source — likely an Instaleap API. | High — blocks MegaSuper entirely |
 | AutoMercado store selection | Store 03 is pre-selected via `ts-t` localStorage. Do prices vary by store? If yes, need to scrape per-store. | Medium |
-| PriceSmart pagination | Confirmed 12,021 products with offset/limit. What is the max limit per call? 50? 100? | Low |
+| PriceSmart full-catalog-scan cost | No server-side country filter exists (confirmed — tried `country`, `club`, `channelKey` params, none changed the `total`). ~3GB/run estimated. Look for a cheaper/filtered endpoint, or accept the cost for nightly batch. | Medium — works today, optimize before treating as high-frequency |
 | TimescaleDB setup | Enable before first scraper run on both local dev PostgreSQL and Azure PostgreSQL Flexible Server | Medium |
 | Scraper rate limits | No rate limiting observed on any store API. Still: add 1–2 sec delay between pages, identify with User-Agent string, run 2–4 AM CR time | High — ethical + stability |
 | Legal review | No ToS found for AutoMercado or MegaSuper at standard URLs. Should formally check before commercial use of data. | Medium for personal use, High for SaaS |
+| No raw/checkpoint storage | Scrapers hold all parsed `ScrapedProduct`s in memory for an entire store before any DB write happens; nothing is persisted mid-scrape. A crash mid-store loses that store's whole run; nothing can resume without re-scraping from scratch. | Medium — acceptable for now at current run times, revisit if a single store scrape exceeds ~10 min |
+| No persistent log sink | Console-only logging — failure detail doesn't survive past the terminal session. The result-summary fix (section 7) covers counts, but not root-cause detail for failures. | Medium |
+
+---
+
+## 7. Incident: First Production Run Wrote Zero Rows
+
+**Date:** 2026-06-16
+**Status:** VTEX (Walmart/MaxiPalí/Más x Menos) and PriceSmart fixed and verified; MegaSuper deferred to a Playwright follow-up (section 7.1)
+
+### Symptom
+
+Owner triggered `nightly-scrape` manually via Hangfire. Job showed **Succeeded** after 30m 15s. No new products or price reports appeared in the database — only the 16 manually-seeded Phase 1 products were present afterward.
+
+This is possible because `ScrapeAllStoresJob.RunAsync` and `PriceWriterService.WriteAsync` both catch exceptions broadly and only log them — neither failure propagates to Hangfire, and the job's return type (`Task`) carries no result for Hangfire to display. **"Succeeded" only means no exception escaped `RunAsync` — it says nothing about whether any row was written.**
+
+### Root causes found (live-verified against the real sites on 2026-06-16)
+
+1. **VTEX EAN read from the wrong JSON level.** `VtexScraper.ParseProduct` reads `item.ean` at the top product level. The real VTEX response only has `ean` nested inside `items[0].ean` (the SKU/variant level) — confirmed live against `maxipali.co.cr`. Top-level `ean` does not exist. Result: every VTEX product (MaxiPalí, Más x Menos, Walmart) gets `Barcode = null`.
+
+2. **`ProductMatcherService` fuzzy-match path is not EF-translatable.** When `Barcode` is null, `FindOrCreateProductAsync` runs:
+   ```csharp
+   db.Products.Where(p => p.Name.ToLower().Contains(Normalize(scraped.Name)...))
+   ```
+   `Normalize()` uses `Regex.Replace` and Unicode normalization — EF Core cannot translate this into SQL and throws `InvalidOperationException` at runtime. Combined with bug #1, **every VTEX product hits this and throws**, is caught by `PriceWriterService`'s per-product try/catch, logged, and skipped. Net effect: zero VTEX rows written.
+
+3. **`CommerceToolsScraper` reads the wrong response shape.** Code expects `{ "results": [...] }` at the root. The live PriceSmart response is actually shaped `{ "data": { "products": { "results": [...], "total": 12021 } } }`, and each result is `{ "id", "masterData": { "current": { "slug", "name", "allVariants": [{ "sku", "price", "attributesRaw" }] } } }` — not the `name`/`slug` as localized maps, nor `masterVariant`/`attributes` assumed in code. `json.TryGetProperty("results", ...)` fails immediately, the pagination loop breaks on page 1, zero PriceSmart products parsed. The original endpoint research (section 1) documented a simplified/incorrect shape that was never re-verified against a raw response before implementation.
+
+4. **MegaSuper `/sitemap.xml` no longer returns XML.** Live request now returns the Next.js SPA HTML shell (same content as `/robots.txt` — both appear to hit a catch-all route), not a sitemap. `JsonLdScraper.GetProductUrlsFromSitemap`'s `XmlDocument.LoadXml` throws, caught, zero product URLs discovered. Separately, a known product page no longer exposes a clean `<script type="application/ld+json">` tag — the page now contains a `BAILOUT_TO_CLIENT_SIDE_RENDERING` marker, suggesting MegaSuper changed its Next.js rendering strategy since the original research. Both the enumeration strategy and the parse strategy for MegaSuper need to be re-investigated from scratch, not just patched.
+
+### Why this stayed invisible for 30 minutes
+
+All four scrapers actually executed real HTTP traffic against real store sites (hence the realistic run time), and every failure path was an exception caught by a `catch (Exception ex) { logger.LogError(...); }` block — by design, so one bad product or one bad store doesn't kill the whole nightly run. The cost of that resilience choice is that **total failure looks identical to total success** unless someone reads the console/log output at the time it happened. No log file sink is configured (`Console` only), so once the terminal session ended, the detailed error trail was gone — only the Hangfire "Succeeded" status and total duration survived.
+
+### Fixes applied (2026-06-16)
+
+- **VtexScraper**: EAN now read from `items[0].ean`. Covers Walmart, MaxiPalí, Más x Menos.
+- **VtexScraper category strategy**: was recursing to LEAF categories (~860 of them for MaxiPalí) instead of using top-level ones (~26). VTEX's `fq=C:{id}` filter matches a category AND all its descendants, so top-level IDs already cover the whole catalog — leaf-level iteration was both unnecessary and, worse, mostly wasted: live-checked the first 10 leaf categories in tree order and all 10 returned zero products, while every sampled top-level category returned products immediately. This wasn't just slow — it's why the live smoke test (section 8) initially timed out at 60s per store despite the scraper being otherwise correct after the EAN fix. Switching to top-level categories took each VTEX store's 25-product smoke test from a 60s timeout down to under 1 second.
+- **ProductMatcherService**: `Normalize()` now runs client-side before the query is built; the `Where()` predicate only ever sees a plain captured string. Also fixed the candidate-search heuristic itself — it used to search for a prefix of the *normalized* name as a substring of the *raw* name, which fails whenever a stopword (e.g. "de") appears before the 10th character, since normalization removes stopwords and shifts later words together while the raw name doesn't. Now anchors on the first raw word instead, which is never a stopword. Added a SQLite-backed regression test (`ProductMatcherServiceMatchingTests`) specifically because EF's `InMemory` test provider does **not** enforce SQL-translation rules and would not have caught the original bug — SQLite does, since it's a real relational provider.
+- **CommerceToolsScraper**: fully rewritten against the live-confirmed schema (section 7.1 below has the schema details). Also discovered the listing endpoint returns PriceSmart's entire multi-country catalog with no server-side country filter — every product must be fetched and checked client-side for a Costa Rica price entry. ~80% of the catalog isn't sold in CR.
+- **Job result visibility**: `ScrapeAllStoresJob.RunAsync` now returns `IReadOnlyList<StoreScrapeResult>` (scraped/written/skipped/failed counts and any error, per store). Hangfire displays this as the job's "Result" on the job detail page — "Succeeded" with this present now actually means something, instead of only meaning "no exception escaped."
+- **Per-platform trigger filtering**: discovered the existing `/api/scrape/vtex`, `/megasuper`, `/pricesmart` HTTP endpoints all silently enqueued the *same* "scrape everything" job regardless of which URL was hit — the platform name in the URL was cosmetic. Added a `Platform` tag to `IStoreScraper` ("vtex"/"megasuper"/"pricesmart") and a `platform` filter parameter on `RunAsync` so these endpoints now actually scope to the right scrapers.
+- **maxProducts cap**: `IStoreScraper.ScrapeAsync` takes an optional `maxProducts` parameter (and the trigger endpoints take a `?maxProducts=` query param) so a scrape can stop after N products instead of running the full catalog — used by the live test framework (section 8) and for fast manual smoke tests via Postman.
+
+### Still open
+
+- No persistent log sink (Console only) — a failure's detail still only exists for as long as the terminal/process stays up. The new result-summary return value covers the *counts*, but not *why* something failed beyond the exception message captured per scraper.
+- PriceSmart full-catalog-scan cost: ~3GB of transfer for a complete nightly run (estimated from per-product payload size × 12,021 total catalog entries), since there's no known server-side country filter. Not yet a problem at current scale, but worth finding a cheaper endpoint before this runs daily long-term — see section 7.1.
+
+---
+
+### 7.1 PriceSmart real schema (reference)
+
+Confirmed live 2026-06-16 against `POST https://www.pricesmart.com/api/ct/getProduct`:
+
+```
+{ data: { products: { offset, count, total: 12021, results: [
+  { id, masterData: { current: {
+      slug: "<plain string>",            ← NOT a localized {es,en} map
+      name: "<plain string>",            ← NOT a localized {es,en} map, often has trailing spaces
+      allVariants: [{
+        id, sku: "167401",               ← internal item number, NOT an EAN/UPC
+        attributesRaw: [
+          { name: "unit_price", value: "<JSON-encoded string>", attributeDefinition: { type: { name: "text" } } },
+          { name: "brand", value: "Member's Selection", attributeDefinition: { type: { name: "text" } } },
+          { name: "localized_images", value: [{ "es-CR": "https://...", "en-CR": "https://...", ... }], attributeDefinition: { type: { name: "set" } } },
+          ... 25+ more (department_description_es, weight, custom_attributes, etc.)
+        ],
+        availability: { channels: { results: [
+          { channel: { key: "6408", address: { country: "CR" }, nameAllLocales: [...] },
+            availability: { isOnStock: true, availableQuantity: 594 } },
+          ... one entry per club/warehouse, across ALL countries PriceSmart operates in
+        ] } }
+      }]
+  } } }
+] } } }
+```
+
+Key gotchas:
+- **`price` is always `null`** on `allVariants[0].price` and `masterVariant.price`, in both bulk-listing and single-slug lookups. The real price lives inside the `unit_price` *attribute*, not as a direct field.
+- **Attribute `value` types differ by `attributeDefinition.type.name`.** `"text"`-typed attributes (unit_price, product_availability, original_price_without_saving, weight, ...) double-encode their value as a JSON string — must `JsonDocument.Parse()` it again. `"set"`-typed attributes (localized_images) store the value as an already-structured array — parsing it as a string will throw.
+- **The catalog is global, not CR-scoped.** `country`/`club`/`channelKey` request body params do not filter results server-side (all tried, all returned the same `total: 12021`) — confirmed by sampling: 3 consecutive early-page products had zero CR entries; a sample at offset 500 had 4/20 (20%) with CR pricing. Every product must be fetched and checked client-side via `unit_price` entries where `country == "CR"`.
+- **No EAN/UPC anywhere.** Checked `custom_attributes` (a per-locale JSON blob with ~20 PIM fields: form, vegan, kosher, organic, storage, allergens, etc.) — no upc/ean/gtin/barcode key exists in any locale variant inspected. PriceSmart products will always go through `ProductMatcherService`'s fuzzy-match path, never the exact-EAN path.
+- **Country-aggregate club code.** Within the per-country price/availability entries, one club equals the country code itself (e.g. club `"64"` for country `"CR"`) — this is the country-wide aggregate, used in preference to picking an arbitrary per-store club entry.
+
+### 7.2 MegaSuper research findings (2026-06-16) — enumeration still broken, deferred
+
+Investigated from scratch since both `/sitemap.xml` and `/robots.txt` now return the Next.js SPA HTML shell instead of their expected formats (section 1 correction). Findings:
+
+- **The JSON-LD extraction logic is NOT broken** — this corrects the original incident write-up. A known product page (`/p/leche-condensada-la-lechera-100-g-8445290709509`) still contains a real, well-formed `<script id="product-structured-data" type="application/ld+json">{...}</script>` tag with all the expected fields. The earlier "no clean JSON-LD tag" finding was a false negative from a naive regex that assumed `type` was the script tag's first attribute — the real tag has `id` first, which AngleSharp's `QuerySelector("script[type='application/ld+json']")` handles correctly (attribute order doesn't matter to a real CSS selector). `JsonLdScraper.ScrapeProductPage` should work unmodified once given a valid product URL.
+- **The enumeration problem is real and the only confirmed blocker.** No sitemap variant works (`sitemap.xml`, `sitemap_index.xml`, `sitemap-0.xml`, `product-sitemap.xml`, `sitemap/sitemap.xml`, `sitemaps/sitemap.xml` — all either 404 or return the SPA shell). The homepage has zero server-rendered `<a>` tags at all (`grep -c '<a '` = 0) and a `BAILOUT_TO_CLIENT_SIDE_RENDERING` marker — category navigation and the product grid are client-rendered, not present in the initial HTML response. The product page itself has no server-rendered breadcrumb/category links either.
+- **Likely cause: MegaSuper appears to be migrating to Instaleap**, a LatAm quick-commerce SaaS platform — the homepage loads all banner images from `wanda-files.instaleap.io` and references a help page at `megasuper.instaleap.io`. This is consistent with the site-wide rendering changes since the original 2026-06-15 research; the storefront likely now hydrates its catalog from Instaleap's backend via client-side API calls rather than baking it into SSR HTML.
+- **No public API endpoint found via static analysis.** Searched the homepage's Next.js RSC payload for `apiUrl`/`graphqlUrl`/`NEXT_PUBLIC_*` config keys and any `instaleap`-hosted API/graphql URLs — none found. A `site:megasuper.com /p/` Google search confirms individual product pages are indexed, but isn't a viable bulk-enumeration strategy.
+- **Conclusion: needs a browser, not curl.** Finding the actual data-fetching mechanism (REST call, GraphQL query, or otherwise) requires inspecting real browser network traffic while the category grid loads — exactly the kind of investigation Playwright was already earmarked for (section 1's original decision deferred Playwright only for AutoMercado; MegaSuper has now joined it). `JsonLdScraper` is left registered — it fails gracefully (0 product URLs found, 0 products scraped, clearly visible in the new `StoreScrapeResult` summary) rather than crashing, so it's safe to leave running while this is deferred.
+- **Next step when picked up:** open MegaSuper in a real browser with devtools open, watch the Network tab while browsing a category, identify the actual API call, then decide whether `JsonLdScraper` can keep using JSON-LD per-product (just with a new enumeration source) or whether the whole scraper should switch to consuming Instaleap's API directly (which may also return price/availability without needing the per-page HTML fetch at all).
+
+---
+
+## 8. Live Test Framework
+
+**Date:** 2026-06-16
+**Status:** Implemented — `LiveScraperSmokeTests`, covers VTEX (×3) + PriceSmart
+
+### Why this exists
+
+The section 7 incident happened because nobody actually ran a scraper against the real internet between writing it and triggering a 30-minute nightly job. A fast, real (non-mocked) smoke test closes that gap — it would have caught all three root-caused bugs in seconds instead of a 30-minute silent failure followed by a multi-hour forensic investigation.
+
+### Design
+
+- **Lives in the same test project** as the mocked unit tests (`scraper/tests/CanastaCR.Scraper.Tests/Live/LiveScraperSmokeTests.cs`), tagged `[Trait("Category", "Live")]`.
+- **Excluded from the default run.** `scraper:test` (and the pre-commit hook, which calls it) now runs `dotnet test --filter "Category!=Live"` — these tests are slow and network-dependent, not appropriate for every commit.
+- **Run on demand** via `.\scripts\run.ps1 scraper:test:live`, or whenever a store's site is suspected to have changed.
+- **Capped at 25 products per store** via the `maxProducts` parameter (section 7's fix), so each store finishes in under a second (VTEX) to ~12 seconds (PriceSmart, which has to scan its global catalog client-side-filtering for Costa Rica — see section 7.1). The whole suite runs in well under 20 seconds, not the ~30 minutes a full nightly crawl takes.
+- **Assertions per store:** at least 25 products returned; every product has a non-empty name and `Currency == "CRC"`; every *available* product has `Price > 0` (price == 0 on an available item is almost certainly a parsing bug, not real data); at least one product is available at all (catches a scraper that runs but marks everything unavailable). VTEX stores additionally assert >50% of products carry an EAN (catches a regression of the section 7 bug #1 fix). PriceSmart additionally asserts every barcode is `null` (since none exist there — see section 7.1; a non-null barcode showing up would mean something changed and needs investigation, not silent acceptance).
+- **MegaSuper has no live test yet** — pointless until enumeration (section 7.2) is fixed; would just assert "0 products," which isn't a useful regression guard. Add one when that's unblocked.
+
+### What it caught immediately
+
+Running this suite for the first time (before any VTEX fix beyond the EAN correction) surfaced a *second*, previously-unknown VTEX bug: the scraper was recursing into ~860 leaf categories per store instead of ~26 top-level ones (VTEX's category filter already matches descendants), and most leaf categories turned out to be empty. Production-scale runs never made this obvious because a full catalog crawl eventually finds enough products regardless — wasted requests just looked like "the scraper takes a while." A tight, capped smoke test made the inefficiency impossible to miss: every VTEX store timed out at 60 seconds trying to reach 25 products. Fixed by switching to top-level category IDs; all three VTEX stores now return 25 valid products in under a second.
+
+### Using this during development
+
+Beyond pre-merge validation, this is the fastest way to iterate on scraper code: change a parser, run `scraper:test:live`, see real pass/fail against the actual site in seconds — no need to trigger a full Hangfire job and wait, then go check the database to see what (if anything) landed.

@@ -22,13 +22,14 @@ public class VtexScraperTests
             {
                 productName = "Leche Dos Pinos 1L",
                 brand = "Dos Pinos",
-                ean = "7441044301002",
                 link = "https://www.maxipali.co.cr/leche",
                 categoryId = "1",
                 items = new[]
                 {
                     new
                     {
+                        // EAN lives on the item/SKU level in the real VTEX response, not top-level
+                        ean = "7441044301002",
                         images = new[] { new { imageUrl = "https://example.com/img.jpg" } },
                         sellers = new[]
                         {
@@ -48,7 +49,7 @@ public class VtexScraperTests
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://www.maxipali.co.cr") };
         var scraper = new VtexScraper("MaxiPalí Alajuela", "https://www.maxipali.co.cr", http, NullLogger<VtexScraper>.Instance);
 
-        var results = await scraper.ScrapeAsync(CancellationToken.None);
+        var results = await scraper.ScrapeAsync(ct: CancellationToken.None);
 
         Assert.Single(results);
         Assert.Equal("Leche Dos Pinos 1L", results[0].Name);
@@ -60,13 +61,53 @@ public class VtexScraperTests
     }
 
     [Fact]
+    public async Task ScrapeAsync_StopsAtMaxProducts()
+    {
+        var categoryTree = JsonSerializer.Serialize(new[]
+        {
+            new { id = 1, name = "Bebidas", children = Array.Empty<object>() },
+            new { id = 2, name = "Lacteos", children = Array.Empty<object>() }
+        });
+
+        var productPage = JsonSerializer.Serialize(Enumerable.Range(0, 3).Select(i => new
+        {
+            productName = $"Producto {i}",
+            brand = "Marca",
+            link = "https://www.maxipali.co.cr/p",
+            categoryId = "1",
+            items = new[]
+            {
+                new
+                {
+                    ean = $"744100100000{i}",
+                    images = Array.Empty<object>(),
+                    sellers = new[] { new { commertialOffer = new { Price = 100m, IsAvailable = true } } }
+                }
+            }
+        }));
+
+        var handler = new FakeHttpMessageHandler(new Dictionary<string, string>
+        {
+            ["/api/catalog_system/pub/category/tree/3"] = categoryTree,
+            ["/api/catalog_system/pub/products/search"] = productPage
+        });
+
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://www.maxipali.co.cr") };
+        var scraper = new VtexScraper("MaxiPalí Alajuela", "https://www.maxipali.co.cr", http, NullLogger<VtexScraper>.Instance);
+
+        var results = await scraper.ScrapeAsync(maxProducts: 2, ct: CancellationToken.None);
+
+        Assert.Equal(2, results.Count);
+    }
+
+    [Fact]
     public async Task ScrapeAsync_ReturnsEmpty_WhenCategoryTreeFails()
     {
         var handler = new FakeHttpMessageHandler(new Dictionary<string, string>(), statusCode: HttpStatusCode.InternalServerError);
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://www.maxipali.co.cr") };
         var scraper = new VtexScraper("MaxiPalí Alajuela", "https://www.maxipali.co.cr", http, NullLogger<VtexScraper>.Instance);
 
-        var results = await scraper.ScrapeAsync(CancellationToken.None);
+        var results = await scraper.ScrapeAsync(ct: CancellationToken.None);
 
         Assert.Empty(results);
     }

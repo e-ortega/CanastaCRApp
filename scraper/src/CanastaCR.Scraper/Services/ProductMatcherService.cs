@@ -29,10 +29,23 @@ public partial class ProductMatcherService(ScraperDbContext db, ILogger<ProductM
         }
 
         // Priority 2: fuzzy name + brand match
-        var candidates = await db.Products
-            .Where(p => p.Name.ToLower().Contains(Normalize(scraped.Name).Substring(0, Math.Min(10, Normalize(scraped.Name).Length))))
-            .Take(20)
-            .ToListAsync(ct);
+        // Candidate fetch uses the raw first word (lowercased only — translatable by EF) rather
+        // than a prefix of the fully-Normalize()'d name: stopword removal shifts later words
+        // together (e.g. "ACEITE DE GIRASOL" → "aceite girasol"), so a normalized prefix often
+        // isn't a contiguous substring of the raw stored name. The first word of a product name
+        // is essentially never a stopword, so it survives as a reliable anchor.
+        // Normalize() itself must never run inside the Where() below — EF Core cannot translate
+        // its Regex/Unicode normalization into SQL.
+        var firstWord = scraped.Name
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault()?.ToLowerInvariant() ?? "";
+
+        var candidates = firstWord.Length == 0
+            ? []
+            : await db.Products
+                .Where(p => p.Name.ToLower().Contains(firstWord))
+                .Take(20)
+                .ToListAsync(ct);
 
         var best = candidates
             .Select(p => (product: p, score: FuzzyScore(scraped, p)))
