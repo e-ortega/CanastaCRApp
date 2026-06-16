@@ -78,8 +78,15 @@ using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     dbContext.Database.Migrate();
-    await SeedDevUser(dbContext);
-    await SeedSampleData(dbContext);
+    // Dev-only fixtures (admin@canastacr.com + 15 sample products) — these ran unconditionally
+    // until 2026-06-16, which seeded them into the Azure DB the first time the API connected to
+    // it. Gated here so a fresh non-dev database (Azure, CI, a new teammate's environment) never
+    // gets fixture data mixed in with real data again.
+    if (app.Environment.IsDevelopment())
+    {
+        await SeedDevUser(dbContext);
+        await SeedSampleData(dbContext);
+    }
 }
 
 app.UseSwagger();
