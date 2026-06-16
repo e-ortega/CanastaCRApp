@@ -22,12 +22,18 @@
 param([string]$Command = 'help')
 
 $Root       = Split-Path $PSScriptRoot -Parent
-$Flutter    = 'C:\Users\eorte\source\repos\flutter\bin\flutter'
-$ApiSrc     = Join-Path $Root 'api\src\CanastaCR.Api'
+$Flutter    = if ($env:CANASTACR_FLUTTER) {
+    $env:CANASTACR_FLUTTER                                  # override for any machine
+} elseif ($IsWindows) {
+    'C:\Users\eorte\source\repos\flutter\bin\flutter'       # Windows default
+} else {
+    'flutter'                                               # macOS/Linux: assume on PATH
+}
+$ApiSrc     = Join-Path $Root 'api' 'src' 'CanastaCR.Api'
 $ApiSln     = Join-Path $Root 'api'
 $AppDir     = Join-Path $Root 'app'
 $InfraDir   = Join-Path $Root 'infra'
-$ScraperSrc = Join-Path $Root 'scraper\src\CanastaCR.Scraper'
+$ScraperSrc = Join-Path $Root 'scraper' 'src' 'CanastaCR.Scraper'
 $ScraperSln = Join-Path $Root 'scraper'
 
 function Assert-EnvVar([string]$Name) {
@@ -57,21 +63,21 @@ switch ($Command) {
 
     'api:test' {
         Write-Host "▶ Running backend tests" -ForegroundColor Cyan
-        dotnet test "$ApiSln\tests\CanastaCR.Tests" --logger "console;verbosity=normal"
+        dotnet test (Join-Path $ApiSln 'tests' 'CanastaCR.Tests') --logger "console;verbosity=normal"
     }
 
     'api:coverage' {
         Write-Host "▶ Running backend tests with coverage" -ForegroundColor Cyan
-        $CoverageDir = "$ApiSln\coverage"
-        dotnet test "$ApiSln\tests\CanastaCR.Tests" `
+        $CoverageDir = Join-Path $ApiSln 'coverage'
+        dotnet test (Join-Path $ApiSln 'tests' 'CanastaCR.Tests') `
             --collect:"XPlat Code Coverage" `
-            --results-directory "$CoverageDir\raw" `
+            --results-directory (Join-Path $CoverageDir 'raw') `
             --logger "console;verbosity=normal"
         # Flatten GUID subfolder → stable path for Coverage Gutters
-        $xml = Get-ChildItem "$CoverageDir\raw" -Recurse -Filter "coverage.cobertura.xml" |
+        $xml = Get-ChildItem (Join-Path $CoverageDir 'raw') -Recurse -Filter "coverage.cobertura.xml" |
                Sort-Object LastWriteTime -Descending | Select-Object -First 1
         if ($xml) {
-            Copy-Item $xml.FullName "$CoverageDir\cobertura.xml" -Force
+            Copy-Item $xml.FullName (Join-Path $CoverageDir 'cobertura.xml') -Force
             Write-Host ""
             Write-Host "✓ Coverage report: api/coverage/cobertura.xml" -ForegroundColor Green
             Write-Host "  In VSCode: Coverage Gutters → Display Coverage (Ctrl+Shift+P)" -ForegroundColor DarkGray
@@ -80,7 +86,7 @@ switch ($Command) {
 
     'api:publish' {
         Write-Host "▶ Publishing API to api/publish" -ForegroundColor Cyan
-        dotnet publish $ApiSrc --configuration Release --output "$Root\api\publish"
+        dotnet publish $ApiSrc --configuration Release --output (Join-Path $Root 'api' 'publish')
     }
 
     # ── Flutter app ───────────────────────────────────────────────────────
@@ -111,7 +117,7 @@ switch ($Command) {
         Push-Location $AppDir
         & $Flutter test --coverage test/models/
         Pop-Location
-        if (Test-Path "$AppDir\coverage\lcov.info") {
+        if (Test-Path (Join-Path $AppDir 'coverage' 'lcov.info')) {
             Write-Host ""
             Write-Host "✓ Coverage report: app/coverage/lcov.info" -ForegroundColor Green
             Write-Host "  In VSCode: Coverage Gutters → Display Coverage (Ctrl+Shift+P)" -ForegroundColor DarkGray
@@ -133,8 +139,8 @@ switch ($Command) {
         Assert-EnvVar 'JWT_SECRET'
         az deployment group validate `
             --resource-group $env:AZURE_RESOURCE_GROUP `
-            --template-file "$InfraDir\main.bicep" `
-            --parameters "$InfraDir\main.bicepparam"
+            --template-file (Join-Path $InfraDir 'main.bicep') `
+            --parameters (Join-Path $InfraDir 'main.bicepparam')
     }
 
     'infra:deploy' {
@@ -147,8 +153,8 @@ switch ($Command) {
         az group create --name $env:AZURE_RESOURCE_GROUP --location $RgLocation
         az deployment group create `
             --resource-group $env:AZURE_RESOURCE_GROUP `
-            --template-file "$InfraDir\main.bicep" `
-            --parameters "$InfraDir\main.bicepparam" `
+            --template-file (Join-Path $InfraDir 'main.bicep') `
+            --parameters (Join-Path $InfraDir 'main.bicepparam') `
             --name $RunName
     }
 
@@ -219,18 +225,18 @@ switch ($Command) {
 
     'scraper:test' {
         Write-Host "▶ Running scraper tests (mocked — fast, no network)" -ForegroundColor Cyan
-        dotnet test "$ScraperSln\tests\CanastaCR.Scraper.Tests" --filter "Category!=Live" --logger "console;verbosity=normal"
+        dotnet test (Join-Path $ScraperSln 'tests' 'CanastaCR.Scraper.Tests') --filter "Category!=Live" --logger "console;verbosity=normal"
     }
 
     'scraper:test:live' {
         Write-Host "▶ Running scraper LIVE tests (hits real store websites — ~25 products/store)" -ForegroundColor Cyan
-        dotnet test "$ScraperSln\tests\CanastaCR.Scraper.Tests" --filter "Category=Live" --logger "console;verbosity=normal"
+        dotnet test (Join-Path $ScraperSln 'tests' 'CanastaCR.Scraper.Tests') --filter "Category=Live" --logger "console;verbosity=normal"
     }
 
     'scraper:logs:tail' {
-        $LogDir = "$ScraperSrc\logs"
+        $LogDir = Join-Path $ScraperSrc 'logs'
         $Today = Get-Date -Format 'yyyyMMdd'
-        $LogFile = "$LogDir\scrape-$Today.log"
+        $LogFile = Join-Path $LogDir "scrape-$Today.log"
         if (-not (Test-Path $LogFile)) {
             Write-Host "No log file yet for today at $LogFile" -ForegroundColor Yellow
             Write-Host "Run '.\scripts\run.ps1 scraper:run' first, or check $LogDir for other dates." -ForegroundColor DarkGray
@@ -256,7 +262,7 @@ switch ($Command) {
     # ── Combined ──────────────────────────────────────────────────────────
     'test' {
         Write-Host "▶ Running all tests (backend + Flutter)" -ForegroundColor Cyan
-        dotnet test "$ApiSln\tests\CanastaCR.Tests" --logger "console;verbosity=normal"
+        dotnet test (Join-Path $ApiSln 'tests' 'CanastaCR.Tests') --logger "console;verbosity=normal"
         Push-Location $AppDir
         & $Flutter test test/models/
         Pop-Location
@@ -265,14 +271,14 @@ switch ($Command) {
     'coverage' {
         Write-Host "▶ Generating coverage for backend + Flutter" -ForegroundColor Cyan
         # Backend
-        $CoverageDir = "$ApiSln\coverage"
-        dotnet test "$ApiSln\tests\CanastaCR.Tests" `
+        $CoverageDir = Join-Path $ApiSln 'coverage'
+        dotnet test (Join-Path $ApiSln 'tests' 'CanastaCR.Tests') `
             --collect:"XPlat Code Coverage" `
-            --results-directory "$CoverageDir\raw" `
+            --results-directory (Join-Path $CoverageDir 'raw') `
             --logger "console;verbosity=normal"
-        $xml = Get-ChildItem "$CoverageDir\raw" -Recurse -Filter "coverage.cobertura.xml" |
+        $xml = Get-ChildItem (Join-Path $CoverageDir 'raw') -Recurse -Filter "coverage.cobertura.xml" |
                Sort-Object LastWriteTime -Descending | Select-Object -First 1
-        if ($xml) { Copy-Item $xml.FullName "$CoverageDir\coverage.cobertura.xml" -Force }
+        if ($xml) { Copy-Item $xml.FullName (Join-Path $CoverageDir 'coverage.cobertura.xml') -Force }
         # Flutter
         Push-Location $AppDir
         & $Flutter test --coverage test/models/

@@ -268,12 +268,153 @@ interface IStoreScraper {
 
 ---
 
+## Environment status
+
+Living record of what's installed on each machine. Update this whenever a tool is installed or changes.
+
+### macOS — MacBook Air (estebanortega, darwin-arm64, macOS 26.5)
+
+| Tool | Status | Notes |
+|---|---|---|
+| Flutter | ✅ 3.44.2 stable | On PATH via Homebrew |
+| Chrome | ✅ | Web target working |
+| Xcode | ✅ 26.5 | Simulator runtimes downloaded — flutter doctor clean |
+| CocoaPods | ✅ 1.16.2 | |
+| Android Studio / SDK | ➖ Not installed (by design) | Android work done on Windows machine instead |
+| .NET SDK | ✅ 9.0.315 + 10.0.301 | Project targets net9.0, resolved by 9.0.315 |
+| pwsh (PowerShell) | ✅ 7.6.2 | |
+| Azure CLI | ✅ 2.87.0 | |
+| GitHub CLI (gh) | ✅ 2.94.0 | |
+| Git hooks | ✅ | Active — tests run automatically before each commit |
+
+### Windows — (eorte, Windows)
+
+| Tool | Status | Notes |
+|---|---|---|
+| Flutter | ✅ | `C:\Users\eorte\source\repos\flutter\bin\flutter` |
+| Xcode | N/A | iOS dev is macOS-only |
+| Android Studio / SDK | ❓ | |
+| .NET 9 SDK | ✅ | Original dev machine |
+| pwsh | ✅ | |
+| Azure CLI | ✅ | |
+| GitHub CLI (gh) | ✅ | |
+
+---
+
+## Platform detection
+
+Before running any command, detect the OS:
+
+```bash
+uname -s   # Darwin = macOS | Linux = Linux
+```
+In PowerShell: `$IsMacOS` / `$IsWindows` are built-in booleans in PowerShell Core (pwsh).
+
+### macOS
+- Flutter: `flutter` (on PATH after install — see macOS setup below)
+- PowerShell: `pwsh` (`brew install powershell`)
+- Scripts: `pwsh scripts/run.ps1 <command>`
+- Environment vars: set in `~/.zshrc` or `~/.zprofile`
+
+### Windows (eorte)
+- Flutter: `C:\Users\eorte\source\repos\flutter\bin\flutter`
+- PowerShell: `powershell` or `pwsh`
+- Scripts: `.\scripts\run.ps1 <command>`
+- Environment vars: Windows user environment variables (persist across terminals)
+
+The `$Flutter` variable in `scripts/run.ps1` auto-selects the correct path via `$IsWindows`.  
+Override on any machine by setting env var `CANASTACR_FLUTTER=/path/to/flutter`.
+
+---
+
+## macOS environment setup (new machine)
+
+Run these once on a new Mac. All commands use Homebrew.
+
+### 1. Homebrew
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+### 2. Core tools
+```bash
+brew install git gh azure-cli powershell
+```
+- `gh` — GitHub CLI (needed for `sync-issues.ps1`, `setup-github.ps1`)
+- `azure-cli` — Azure CLI (needed for infra commands)
+- `powershell` — installs `pwsh`, required by `run.ps1` and the git hooks
+
+### 3. .NET 9 SDK
+```bash
+brew install --cask dotnet-sdk
+dotnet --version   # should show 9.x
+```
+
+### 4. Flutter (stable) ✅ done
+```bash
+brew install --cask flutter
+flutter doctor     # shows what's still missing
+```
+Flutter will be on PATH automatically after Homebrew install.
+
+### 5. Xcode + iOS toolchain ✅ done
+```bash
+# 1. Ensure Xcode command-line tools point to the app
+sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
+sudo xcodebuild -license accept
+
+# 2. Download iOS simulator runtime (missing — causes flutter doctor warning)
+#    Option A: Xcode → Settings (Cmd+,) → Platforms → + → iOS
+#    Option B: command line:
+sudo xcodebuild -downloadPlatform iOS
+
+# 3. CocoaPods — Flutter's iOS dependency manager
+brew install cocoapods
+
+# 4. Verify Flutter sees everything
+flutter doctor
+```
+After step 2, `flutter doctor` Xcode row should show ✓. Update Environment status table above.
+
+Open iOS Simulator: `open -a Simulator` (comes with Xcode)
+
+### 6. PostgreSQL (local dev — optional)
+API uses EF InMemory by default in dev mode, so PostgreSQL is only needed if you switch to a local DB.
+```bash
+brew install postgresql@16
+brew services start postgresql@16
+```
+
+### 7. Environment variables (macOS)
+Add to `~/.zshrc` (or `~/.zprofile` for login shells):
+```bash
+# CanastaCR — local dev only (PostgreSQL, overrides appsettings.Development.json)
+export ConnectionStrings__DefaultConnection="Host=localhost;Database=canastacr_dev;Username=postgres;Password=<your-pg-password>"
+
+# Azure / infra commands
+export AZURE_RESOURCE_GROUP="canastacr-rg"
+export POSTGRES_ADMIN_PASSWORD="<prod-db-password>"
+export JWT_SECRET="<jwt-secret-32-chars>"
+```
+Then `source ~/.zshrc` to apply.
+
+### 8. Activate git hooks
+```bash
+pwsh scripts/run.ps1 hooks:install
+```
+
+---
+
 ## Running things
 
 ### API (development — InMemory DB, no PostgreSQL needed)
 ```bash
-cd api
-dotnet run --project src/CanastaCR.Api
+# via task runner (both platforms)
+pwsh scripts/run.ps1 api          # macOS
+.\scripts\run.ps1 api             # Windows
+
+# or directly
+cd api && dotnet run --project src/CanastaCR.Api --launch-profile https
 # Swagger UI: https://localhost:7068/swagger
 # Seed data loads automatically on first run (15 products, prices at all 5 chains)
 # Dev credentials: admin@canastacr.com / admin123
@@ -281,22 +422,28 @@ dotnet run --project src/CanastaCR.Api
 
 ### API tests
 ```bash
-cd api
-dotnet test tests/CanastaCR.Tests/
-# 28 tests — all should pass
+pwsh scripts/run.ps1 api:test     # macOS
+.\scripts\run.ps1 api:test        # Windows
 ```
 
 ### Flutter app (web)
 ```bash
-cd app
-C:\Users\eorte\source\repos\flutter\bin\flutter run -d chrome
+pwsh scripts/run.ps1 app          # macOS
+.\scripts\run.ps1 app             # Windows
+```
+
+### Flutter app (iOS Simulator — macOS only)
+```bash
+open -a Simulator                 # launch iOS Simulator first
+cd app && flutter run             # auto-selects the simulator
+# or target it explicitly:
+flutter run -d "iPhone 16"
 ```
 
 ### Flutter tests
 ```bash
-cd app
-C:\Users\eorte\source\repos\flutter\bin\flutter test test/models/
-# 30 tests — all should pass
+pwsh scripts/run.ps1 app:test     # macOS
+.\scripts\run.ps1 app:test        # Windows
 ```
 
 ---
