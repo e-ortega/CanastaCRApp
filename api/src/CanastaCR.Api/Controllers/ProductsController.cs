@@ -50,6 +50,14 @@ public class ProductsController(ProductService productService, PriceService pric
         return CreatedAtAction(nameof(GetById), new { id = product.Id }, product);
     }
 
+    [HttpPatch("{id:guid}")]
+    [Authorize]
+    public async Task<IActionResult> Update(Guid id, UpdateProductDto dto, CancellationToken ct)
+    {
+        var product = await productService.UpdateAsync(id, dto, ct);
+        return product is null ? NotFound() : Ok(product);
+    }
+
     [HttpGet("{id:guid}/prices")]
     public async Task<IActionResult> GetPrices(Guid id, CancellationToken ct)
     {

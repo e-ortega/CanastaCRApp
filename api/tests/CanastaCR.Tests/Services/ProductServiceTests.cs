@@ -269,8 +269,43 @@ public class ProductServiceTests
         var service = new ProductService(db, mockOff.Object);
         var result = await service.LookupOrCreateByBarcodeAsync(barcode);
 
-        Assert.Equal("Unknown product", result.Name);
+        Assert.Equal(ProductService.UnnamedProductPlaceholder, result.Name);
         Assert.Equal(barcode, result.Barcode);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_UpdatesName_LeavingBrandAndCategoryUntouched()
+    {
+        var db = DbContextFactory.Create();
+        var product = new Product
+        {
+            Id = Guid.NewGuid(), Name = ProductService.UnnamedProductPlaceholder,
+            Brand = "Existing Brand", Category = "Existing Category", CreatedAt = DateTimeOffset.UtcNow
+        };
+        db.Products.Add(product);
+        await db.SaveChangesAsync();
+
+        var service = new ProductService(db, new Mock<IOpenFoodFactsClient>().Object);
+        var result = await service.UpdateAsync(product.Id, new UpdateProductDto("Galletas María"));
+
+        Assert.NotNull(result);
+        Assert.Equal("Galletas María", result.Name);
+        // A name-only update must not clobber fields it doesn't carry.
+        Assert.Equal("Existing Brand", result.Brand);
+        Assert.Equal("Existing Category", result.Category);
+
+        var saved = await db.Products.FindAsync(product.Id);
+        Assert.Equal("Galletas María", saved!.Name);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ReturnsNull_WhenProductDoesNotExist()
+    {
+        var service = CreateService();
+
+        var result = await service.UpdateAsync(Guid.NewGuid(), new UpdateProductDto("Nombre"));
+
+        Assert.Null(result);
     }
 
     [Fact]

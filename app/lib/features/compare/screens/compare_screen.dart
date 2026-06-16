@@ -35,7 +35,17 @@ class _CompareScreenState extends State<CompareScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(_data?.productName ?? 'Comparar precios')),
+      appBar: AppBar(
+        title: Text(_data?.productName ?? 'Comparar precios'),
+        actions: [
+          if (_data != null)
+            IconButton(
+              icon: const Icon(Icons.edit_outlined),
+              tooltip: 'Editar nombre del producto',
+              onPressed: () => _showEditProductName(context),
+            ),
+        ],
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _data == null
@@ -52,6 +62,27 @@ class _CompareScreenState extends State<CompareScreen> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        if (d.productName == unnamedProductPlaceholder)
+          Container(
+            padding: const EdgeInsets.all(14),
+            margin: const EdgeInsets.only(bottom: 16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFAEEDA),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.warning_amber_rounded, color: Color(0xFF854F0B)),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text(
+                    'No se reconoció este producto. Toca el lápiz arriba para ponerle un nombre antes de reportar un precio.',
+                    style: TextStyle(fontSize: 13, color: Color(0xFF633806)),
+                  ),
+                ),
+              ],
+            ),
+          ),
         if (d.savingsAmount != null && d.savingsAmount! > 0)
           Container(
             padding: const EdgeInsets.all(14),
@@ -125,6 +156,26 @@ class _CompareScreenState extends State<CompareScreen> {
         ),
       ],
     );
+  }
+
+  Future<void> _showEditProductName(BuildContext context) async {
+    final updated = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => _EditProductNameSheet(
+        api: _api,
+        productId: widget.productId,
+        currentName: _data?.productName ?? '',
+      ),
+    );
+    if (updated == true) {
+      setState(() => _loading = true);
+      _load();
+    }
   }
 
   Future<void> _showReportPrice(BuildContext context) async {
@@ -440,6 +491,125 @@ class _ReportPriceSheetState extends State<_ReportPriceSheet> {
                   child: Text(
                     'Gracias por contribuir. Ganas puntos de reputación.',
                     style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EditProductNameSheet extends StatefulWidget {
+  final ApiClient api;
+  final String productId;
+  final String currentName;
+
+  const _EditProductNameSheet({
+    required this.api,
+    required this.productId,
+    required this.currentName,
+  });
+
+  @override
+  State<_EditProductNameSheet> createState() => _EditProductNameSheetState();
+}
+
+class _EditProductNameSheetState extends State<_EditProductNameSheet> {
+  late final _nameCtrl = TextEditingController(
+    text: widget.currentName == unnamedProductPlaceholder ? '' : widget.currentName,
+  );
+  bool _submitting = false;
+  String? _error;
+
+  Future<void> _submit() async {
+    final name = _nameCtrl.text.trim();
+    if (name.isEmpty) {
+      setState(() => _error = 'Ingresa un nombre');
+      return;
+    }
+
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+
+    try {
+      await widget.api.patch('/products/${widget.productId}', {'name': name});
+      if (mounted) Navigator.pop(context, true);
+    } catch (_) {
+      setState(() => _error = 'Error al guardar el nombre. Intenta de nuevo.');
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SizedBox(height: 12),
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)),
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 16, 16, 4),
+            child: Text('Editar nombre del producto', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+          ),
+          const Divider(height: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Nombre del producto', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _nameCtrl,
+                  autofocus: true,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: InputDecoration(
+                    hintText: 'ej. Galletas María Pozuelo',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  ),
+                  onChanged: (_) => setState(() => _error = null),
+                  onSubmitted: (_) => _submit(),
+                ),
+                if (_error != null) ...[
+                  const SizedBox(height: 8),
+                  Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 13)),
+                ],
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    onPressed: _submitting ? null : _submit,
+                    child: _submitting
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                          )
+                        : const Text('Guardar'),
                   ),
                 ),
                 const SizedBox(height: 16),

@@ -150,6 +150,33 @@ public class ProductsControllerTests
     }
 
     [Fact]
+    public async Task Update_ReturnsOkResult_WithUpdatedProduct()
+    {
+        var db = DbContextFactory.Create();
+        var productId = Guid.NewGuid();
+        db.Products.Add(new() { Id = productId, Name = ProductService.UnnamedProductPlaceholder, CreatedAt = DateTimeOffset.UtcNow });
+        await db.SaveChangesAsync();
+
+        var productService = new ProductService(db, new Mock<IOpenFoodFactsClient>().Object);
+        var controller = new ProductsController(productService, new PriceService(db));
+
+        var result = await controller.Update(productId, new UpdateProductDto("Galletas María"), CancellationToken.None);
+
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var dto = Assert.IsType<ProductDto>(okResult.Value);
+        Assert.Equal("Galletas María", dto.Name);
+    }
+
+    [Fact]
+    public async Task Update_ReturnsNotFound_WhenProductDoesNotExist()
+    {
+        var controller = CreateController();
+        var result = await controller.Update(Guid.NewGuid(), new UpdateProductDto("Nombre"), CancellationToken.None);
+
+        Assert.IsType<NotFoundResult>(result);
+    }
+
+    [Fact]
     public async Task GetPrices_ReturnsOkResult_WhenComparisonsExist()
     {
         var db = DbContextFactory.Create();

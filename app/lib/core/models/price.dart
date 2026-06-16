@@ -1,3 +1,8 @@
+/// Mirrors CanastaCR.Api.Services.ProductService.UnnamedProductPlaceholder — shown when
+/// Open Food Facts had nothing for a scanned barcode. Used to prompt the user to fix the
+/// name before reporting a price, since "no name" makes a price report useless to others.
+const unnamedProductPlaceholder = 'Producto sin nombre';
+
 class StorePrice {
   // Null for chain-level scraped prices (no specific physical location) — every chain
   // scraped so far sets one nationwide price, not a per-location price. storeName/chain

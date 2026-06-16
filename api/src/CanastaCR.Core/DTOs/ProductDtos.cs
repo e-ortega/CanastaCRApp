@@ -19,6 +19,10 @@ public record CreateProductDto(
     string? Description
 );
 
+public record UpdateProductDto(
+    string Name
+);
+
 public record ProductSearchResultDto(
     Guid Id,
     string? Barcode,

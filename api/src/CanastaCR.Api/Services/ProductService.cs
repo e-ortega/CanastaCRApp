@@ -9,6 +9,11 @@ namespace CanastaCR.Api.Services;
 
 public class ProductService(AppDbContext db, IOpenFoodFactsClient offClient)
 {
+    // Shown to the user as the product name when Open Food Facts has nothing for this
+    // barcode. Kept as a known constant (not just an inline literal) so the Flutter app can
+    // detect it and prompt the user to fix the name before reporting a price.
+    public const string UnnamedProductPlaceholder = "Producto sin nombre";
+
     public async Task<ProductDto?> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
         var p = await db.Products.FindAsync([id], ct);
@@ -87,7 +92,7 @@ public class ProductService(AppDbContext db, IOpenFoodFactsClient offClient)
         {
             Id = Guid.NewGuid(),
             Barcode = barcode,
-            Name = offData?.Name ?? "Unknown product",
+            Name = offData?.Name ?? UnnamedProductPlaceholder,
             Brand = offData?.Brand,
             Category = offData?.Category,
             ImageUrl = offData?.ImageUrl,
@@ -114,6 +119,17 @@ public class ProductService(AppDbContext db, IOpenFoodFactsClient offClient)
         };
 
         db.Products.Add(product);
+        await db.SaveChangesAsync(ct);
+        return MapToDto(product);
+    }
+
+    public async Task<ProductDto?> UpdateAsync(Guid id, UpdateProductDto dto, CancellationToken ct = default)
+    {
+        var product = await db.Products.FindAsync([id], ct);
+        if (product is null) return null;
+
+        product.Name = dto.Name;
+
         await db.SaveChangesAsync(ct);
         return MapToDto(product);
     }
