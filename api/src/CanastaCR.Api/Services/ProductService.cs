@@ -22,8 +22,31 @@ public class ProductService(AppDbContext db, IOpenFoodFactsClient offClient)
 
     public async Task<ProductDto?> GetByBarcodeAsync(string barcode, CancellationToken ct = default)
     {
-        var p = await db.Products.FirstOrDefaultAsync(x => x.Barcode == barcode, ct);
+        var p = await FindByBarcodeOrAlternateAsync(barcode, ct);
         return p is null ? null : MapToDto(p);
+    }
+
+    private async Task<Product?> FindByBarcodeOrAlternateAsync(string barcode, CancellationToken ct)
+    {
+        var p = await db.Products.FirstOrDefaultAsync(x => x.Barcode == barcode, ct);
+        if (p is not null) return p;
+
+        var alt = AlternateBarcodeForm(barcode);
+        return alt is null ? null : await db.Products.FirstOrDefaultAsync(x => x.Barcode == alt, ct);
+    }
+
+    /// <summary>
+    /// A 12-digit UPC-A code and its 13-digit EAN-13 form (UPC-A with a leading zero) are the
+    /// same product, but different scanners/sources don't agree on which form they report —
+    /// a common, well-documented gap in barcode lookups (Open Food Facts has the same
+    /// ambiguity internally). Returns the other form, or null if the input isn't a barcode
+    /// this conversion applies to.
+    /// </summary>
+    public static string? AlternateBarcodeForm(string barcode)
+    {
+        if (barcode.Length == 12 && barcode.All(char.IsAsciiDigit)) return "0" + barcode;
+        if (barcode.Length == 13 && barcode[0] == '0' && barcode.All(char.IsAsciiDigit)) return barcode[1..];
+        return null;
     }
 
     public async Task<List<ProductSearchResultDto>> GetAllAsync(CancellationToken ct = default)
@@ -84,13 +107,20 @@ public class ProductService(AppDbContext db, IOpenFoodFactsClient offClient)
 
     public async Task<ProductDto> LookupOrCreateByBarcodeAsync(string barcode, CancellationToken ct = default)
     {
-        var existing = await db.Products.FirstOrDefaultAsync(p => p.Barcode == barcode, ct);
+        var existing = await FindByBarcodeOrAlternateAsync(barcode, ct);
         if (existing is not null) return MapToDto(existing);
 
         var offData = await offClient.LookupByBarcodeAsync(barcode, ct);
+        var alt = AlternateBarcodeForm(barcode);
+        if (offData is null && alt is not null)
+            offData = await offClient.LookupByBarcodeAsync(alt, ct);
+
         var product = new Product
         {
             Id = Guid.NewGuid(),
+            // Keep the form the device actually scanned — a later scan from a different device
+            // that reports the other form will still resolve to this same product via
+            // FindByBarcodeOrAlternateAsync, so this never creates a duplicate going forward.
             Barcode = barcode,
             Name = offData?.Name ?? UnnamedProductPlaceholder,
             Brand = offData?.Brand,

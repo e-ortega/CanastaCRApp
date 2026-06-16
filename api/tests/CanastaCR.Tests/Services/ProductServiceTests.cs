@@ -55,6 +55,59 @@ public class ProductServiceTests
         Assert.Equal(barcode, result.Barcode);
     }
 
+    [Theory]
+    [InlineData("012345678905", "0012345678905")] // UPC-A -> EAN-13
+    [InlineData("0012345678905", "012345678905")] // EAN-13 -> UPC-A
+    public void AlternateBarcodeForm_ConvertsBetweenUpcAAndEan13(string input, string expected)
+    {
+        Assert.Equal(expected, ProductService.AlternateBarcodeForm(input));
+    }
+
+    [Theory]
+    [InlineData("5901234123457")] // already 13 digits, no leading zero — not UPC-A-derived
+    [InlineData("12345")]         // too short to be either form
+    [InlineData("not-a-barcode")]
+    public void AlternateBarcodeForm_ReturnsNull_WhenConversionDoesNotApply(string input)
+    {
+        Assert.Null(ProductService.AlternateBarcodeForm(input));
+    }
+
+    [Fact]
+    public async Task GetByBarcodeAsync_FindsProduct_ViaAlternateUpcEanForm()
+    {
+        // Stored as 13-digit EAN-13 (e.g. scraped from a VTEX chain); user's phone reports the
+        // 12-digit UPC-A form for the same physical barcode.
+        var db = DbContextFactory.Create();
+        var product = new Product { Id = Guid.NewGuid(), Barcode = "0012345678905", Name = "Cereal", CreatedAt = DateTimeOffset.UtcNow };
+        db.Products.Add(product);
+        await db.SaveChangesAsync();
+
+        var service = new ProductService(db, new Mock<IOpenFoodFactsClient>().Object);
+        var result = await service.GetByBarcodeAsync("012345678905");
+
+        Assert.NotNull(result);
+        Assert.Equal("Cereal", result.Name);
+    }
+
+    [Fact]
+    public async Task LookupOrCreateByBarcodeAsync_TriesAlternateForm_WhenOpenFoodFactsHasOnlyThatForm()
+    {
+        const string scanned = "012345678905";   // UPC-A, what the device reported
+        const string alternate = "0012345678905"; // EAN-13, what Open Food Facts has it under
+
+        var offData = new CreateProductDto(Barcode: alternate, Name: "Cereal de Maíz", Brand: "Brand", Category: "Cereals", ImageUrl: null, Description: null);
+        var mockOff = new Mock<IOpenFoodFactsClient>();
+        mockOff.Setup(x => x.LookupByBarcodeAsync(scanned, It.IsAny<CancellationToken>())).ReturnsAsync((CreateProductDto?)null);
+        mockOff.Setup(x => x.LookupByBarcodeAsync(alternate, It.IsAny<CancellationToken>())).ReturnsAsync(offData);
+
+        var service = new ProductService(DbContextFactory.Create(), mockOff.Object);
+        var result = await service.LookupOrCreateByBarcodeAsync(scanned);
+
+        Assert.Equal("Cereal de Maíz", result.Name);
+        // Saved under the form the device actually scanned, not the alternate Open Food Facts matched on.
+        Assert.Equal(scanned, result.Barcode);
+    }
+
     [Fact]
     public async Task GetByBarcodeAsync_ReturnsNull_WhenBarcodeDoesNotExist()
     {
