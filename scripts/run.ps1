@@ -13,6 +13,7 @@
   .\scripts\run.ps1 scraper:run      # run scraper service (http://localhost:5050/hangfire)
   .\scripts\run.ps1 scraper:test     # run scraper unit tests (mocked, fast)
   .\scripts\run.ps1 scraper:test:live # run scraper tests against real store websites
+  .\scripts\run.ps1 scraper:logs:tail # follow today's local scraper log file live
   .\scripts\run.ps1 infra:validate   # validate Bicep without deploying
   .\scripts\run.ps1 infra:deploy     # deploy Bicep to Azure (prod)
   .\scripts\run.ps1 coverage         # generate coverage for both (api + app)
@@ -226,6 +227,19 @@ switch ($Command) {
         dotnet test "$ScraperSln\tests\CanastaCR.Scraper.Tests" --filter "Category=Live" --logger "console;verbosity=normal"
     }
 
+    'scraper:logs:tail' {
+        $LogDir = "$ScraperSrc\logs"
+        $Today = Get-Date -Format 'yyyyMMdd'
+        $LogFile = "$LogDir\scrape-$Today.log"
+        if (-not (Test-Path $LogFile)) {
+            Write-Host "No log file yet for today at $LogFile" -ForegroundColor Yellow
+            Write-Host "Run '.\scripts\run.ps1 scraper:run' first, or check $LogDir for other dates." -ForegroundColor DarkGray
+            exit 0
+        }
+        Write-Host "▶ Tailing $LogFile (Ctrl+C to stop)" -ForegroundColor Cyan
+        Get-Content -Path $LogFile -Wait -Tail 50
+    }
+
     # ── Git hooks ─────────────────────────────────────────────────────────
     'hooks:install' {
         Write-Host "▶ Installing git hooks from .githooks/" -ForegroundColor Cyan
@@ -295,6 +309,7 @@ switch ($Command) {
         Write-Host "    scraper:build      Build scraper (Release)"
         Write-Host "    scraper:test       Run scraper xUnit tests (mocked, fast, no network)"
         Write-Host "    scraper:test:live  Run live tests against real store sites (~25 products/store)"
+        Write-Host "    scraper:logs:tail  Follow today's local scraper log file live"
         Write-Host ""
         Write-Host "  Infrastructure" -ForegroundColor Yellow
         Write-Host "    infra:validate         Validate Bicep (no deploy)"

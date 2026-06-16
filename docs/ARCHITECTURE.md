@@ -18,6 +18,7 @@
    - [7.1 PriceSmart real schema (reference)](#71-pricesmart-real-schema-reference)
    - [7.2 MegaSuper research findings — enumeration still broken, deferred](#72-megasuper-research-findings-2026-06-16--enumeration-still-broken-deferred)
 8. [Live Test Framework](#8-live-test-framework)
+9. [Observability & Operations](#9-observability--operations)
 
 ---
 
@@ -496,3 +497,59 @@ Running this suite for the first time (before any VTEX fix beyond the EAN correc
 ### Using this during development
 
 Beyond pre-merge validation, this is the fastest way to iterate on scraper code: change a parser, run `scraper:test:live`, see real pass/fail against the actual site in seconds — no need to trigger a full Hangfire job and wait, then go check the database to see what (if anything) landed.
+
+---
+
+## 9. Observability & Operations
+
+**Date:** 2026-06-16
+**Status:** Implemented — local file logging, independent per-store jobs, verified end-to-end
+
+This section exists because of the section 7 incident: a 30-minute run that silently wrote zero rows, diagnosable only by re-deriving everything from scratch since no log survived past the terminal session. Two changes close that gap: a persistent local log, and making each store's scrape a genuinely independent unit of work instead of one big sequential job.
+
+### 9.1 Local log file (the "dump the process locally" piece)
+
+The scraper now logs through Serilog to two sinks:
+- **Console** — same as before, useful while watching `scraper:run` in a foreground terminal.
+- **Rolling daily file** at `scraper/src/CanastaCR.Scraper/logs/scrape-{yyyyMMdd}.log` (already covered by the repo's `[Ll]ogs/` gitignore pattern — nothing to add there). Retains 14 days, then rolls off.
+
+Critically, **Serilog reads its levels from the same `appsettings.json`/`appsettings.Development.json` `Logging:LogLevel` section every other part of this app already uses** (`builder.Host.UseSerilog((context, services, cfg) => cfg.ReadFrom.Configuration(context.Configuration)...)`), rather than hardcoding levels in `Program.cs`. The first version of this change hardcoded levels and silently ignored that config section entirely — editing `appsettings.json` would have done nothing, which is exactly the kind of trap that makes an incident *harder* to diagnose. Caught by actually running it and finding the log flooded with raw parameterized SQL from `Microsoft.EntityFrameworkCore.Database.Command` (logged at `Information`, which nothing was overriding). Fixed by adding `"Microsoft.EntityFrameworkCore": "Warning"` to `appsettings.json`'s `Logging:LogLevel`, now actually respected.
+
+**How to use it:**
+```powershell
+.\scripts\run.ps1 scraper:logs:tail     # follow today's log file live (Get-Content -Wait)
+```
+Or open `scraper/src/CanastaCR.Scraper/logs/scrape-YYYYMMDD.log` directly for a past date.
+
+**What gets logged:** job start/finish per store (`ScrapeStoreJob`), write counts (`PriceWriterService`: written/skipped/failed), fuzzy-match decisions (`ProductMatcherService`: auto-merge vs. ambiguous-match-creates-new, with the score), and any exception with full stack trace. Verified live (2026-06-16): triggering Walmart, MaxiPalí, Más x Menos, and PriceSmart simultaneously produced a clean, readable, interleaved log with no SQL noise.
+
+### 9.2 Independent, concurrent per-store jobs
+
+**Before:** `ScrapeAllStoresJob.RunAsync` looped through every matching `IStoreScraper` sequentially, in-process, inside one Hangfire job. Triggering "/api/scrape/vtex" ran Walmart, then MaxiPalí, then Más x Menos, one after another, all sharing one job's lifetime — Hangfire only ever showed one "ScrapeAllStoresJob" entry, succeeded or failed as a single unit, with no way to see one store's progress independent of the others.
+
+**Now:**
+- `ScrapeStoreJob` is the real unit of work — it scrapes exactly **one** store (selected by `StoreName`) and returns a `StoreScrapeResult`.
+- `ScrapeAllStoresJob` is a thin **fan-out enqueuer** — for each scraper matching the platform filter (or all of them), it calls `IBackgroundJobClient.Enqueue<ScrapeStoreJob>(...)` and returns immediately with the list of newly-created job IDs. It never scrapes anything itself anymore.
+- Each `ScrapeStoreJob` Hangfire execution gets its **own DI scope** (Hangfire.AspNetCore's job activator creates a new `IServiceScopeFactory.CreateScope()` per job), so each gets its own `ScraperDbContext`/`ProductMatcherService`/`PriceWriterService` instances. EF Core's `DbContext` is not thread-safe, so this matters — concurrent store jobs never share one, by construction, not by convention.
+- Hangfire's default worker count (`BackgroundJobServerOptions.WorkerCount`, observed as 20 on this dev machine — roughly `Environment.ProcessorCount × 5`) already provides far more parallelism than the 4–5 stores this scrapes today need. No tuning required at this scale; revisit if the store count grows enough to saturate it.
+
+**Trigger endpoints**, now precise:
+| Endpoint | Behavior |
+|---|---|
+| `POST /api/scrape` | Fans out all registered stores as independent jobs |
+| `POST /api/scrape/vtex` | Fans out the 3 VTEX stores (Walmart, MaxiPalí, Más x Menos) as independent jobs |
+| `POST /api/scrape/walmart` `/maxipali` `/masxmenos` `/megasuper` `/pricesmart` | Enqueues a **single** `ScrapeStoreJob` directly, by exact store name — no platform-filter ambiguity. (Previously `/walmart` actually ran the same "scrape everything" job as every other endpoint — the platform name in the URL was cosmetic. Fixed alongside this change.) |
+
+**Verified live (2026-06-16):** triggered Walmart, MaxiPalí, Más x Menos, and PriceSmart via four separate `POST` calls. Log timestamps confirm all four started within ~210ms of each other and ran concurrently — the three VTEX stores finished in ~1.5s while PriceSmart's longer full-catalog scan (its own ~7s) was still running, completing independently afterward without blocking or being blocked by the others. Each is now a separate row in the Hangfire dashboard's job list, individually showing its own `StoreScrapeResult` (written/skipped/failed) as that job's result.
+
+### 9.3 Runbook: "what happened during/after a scrape run?"
+
+1. **Check the Hangfire dashboard** at `/hangfire` (e.g. `http://localhost:5050/hangfire` locally). Each store now appears as its own job — check its state (Succeeded/Failed/Processing) and its **Result** (the `StoreScrapeResult`: scraped/written/skipped/failed counts). A `Succeeded` state with `Written: 0` is the section 7 incident's signature — investigate immediately, don't treat it as fine.
+2. **Tail or open the log file** (`scraper:logs:tail`, or the dated file directly) for the detail behind those counts — which products were skipped and why, any exception with stack trace, fuzzy-match decisions.
+3. **If a store looks broken, isolate it with the live test suite** (`scraper:test:live`, or just instantiate that one scraper) before assuming the bug is in the shared pipeline (matcher/writer) — section 7's incident had three *independent* root causes, one per platform; check each store in isolation rather than assuming one fix covers all of them.
+4. **Verify against the actual database** via the main API (`GET /api/products`, `GET /api/products/{id}/prices`) — the Hangfire result and log file describe what the scraper *did*; checking the API confirms what's actually queryable afterward.
+5. **`GET /api/scrape/status`** gives a quick aggregate (enqueued/processing/succeeded/failed counts across all jobs in storage) — useful for "is anything still running" but not a substitute for checking individual job results per store.
+
+### 9.4 Azure logging — not yet applicable to the scraper
+
+The existing `.\scripts\run.ps1 log:tail` (`az webapp log tail`) streams logs for the **main API**, which is deployed to Azure App Service. The scraper is **local-only** today (section 4's decision: start local, add an Azure Container Apps Job later). When that move happens, this section should be updated with the equivalent Azure-side command (likely `az containerapp logs show` or Azure Monitor/Log Analytics querying, depending on which Azure compute option is chosen) — until then, section 9.1–9.3 above is the complete operational story.
