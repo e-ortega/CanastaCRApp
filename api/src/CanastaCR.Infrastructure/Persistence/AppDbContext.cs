@@ -74,7 +74,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             new Store { Id = new Guid("11111111-0000-0000-0000-000000000007"), Name = "MegaSuper Tibás", Chain = StoreChain.MegaSuper, City = "San José", Address = "Tibás", Lat = 9.9742, Lng = -84.0821 },
             new Store { Id = new Guid("11111111-0000-0000-0000-000000000008"), Name = "MegaSuper Desamparados", Chain = StoreChain.MegaSuper, City = "San José", Address = "Desamparados", Lat = 9.9031, Lng = -84.0766 },
             new Store { Id = new Guid("11111111-0000-0000-0000-000000000009"), Name = "PriceSmart San José", Chain = StoreChain.PriceSmart, City = "San José", Address = "La Uruca", Lat = 9.9571, Lng = -84.1107 },
-            new Store { Id = new Guid("11111111-0000-0000-0000-000000000010"), Name = "PriceSmart Alajuela", Chain = StoreChain.PriceSmart, City = "Alajuela", Address = "Alajuela", Lat = 10.0198, Lng = -84.2089 }
+            new Store { Id = new Guid("11111111-0000-0000-0000-000000000010"), Name = "PriceSmart Alajuela", Chain = StoreChain.PriceSmart, City = "Alajuela", Address = "Alajuela", Lat = 10.0198, Lng = -84.2089 },
+            new Store { Id = new Guid("11111111-0000-0000-0000-000000000011"), Name = "Walmart San José", Chain = StoreChain.Walmart, City = "San José", Address = "La Uruca", Lat = 9.9612, Lng = -84.1089 },
+            new Store { Id = new Guid("11111111-0000-0000-0000-000000000012"), Name = "Walmart Alajuela", Chain = StoreChain.Walmart, City = "Alajuela", Address = "Alajuela Centro", Lat = 10.0175, Lng = -84.2142 }
         );
     }
 }

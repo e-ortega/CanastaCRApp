@@ -7,5 +7,6 @@ public enum StoreChain
     MaxiPali,
     MegaSuper,
     PriceSmart,
+    Walmart,
     Other
 }

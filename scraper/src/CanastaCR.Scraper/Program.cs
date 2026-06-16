@@ -69,6 +69,14 @@ builder.Services.AddScoped<IStoreScraper>(sp =>
 builder.Services.AddScoped<IStoreScraper>(sp =>
 {
     var factory = sp.GetRequiredService<IHttpClientFactory>();
+    var logger = sp.GetRequiredService<ILogger<VtexScraper>>();
+    var baseUrl = scraperConfig["WalmartBaseUrl"] ?? "https://www.walmart.co.cr";
+    return new VtexScraper("Walmart San José", baseUrl, factory.CreateClient("vtex"), logger);
+});
+
+builder.Services.AddScoped<IStoreScraper>(sp =>
+{
+    var factory = sp.GetRequiredService<IHttpClientFactory>();
     var logger = sp.GetRequiredService<ILogger<JsonLdScraper>>();
     return new JsonLdScraper(factory.CreateClient("megasuper"), logger);
 });
@@ -97,7 +105,13 @@ api.MapPost("/", (IBackgroundJobClient bgJob) =>
 api.MapPost("/vtex", (IBackgroundJobClient bgJob) =>
 {
     bgJob.Enqueue<ScrapeAllStoresJob>(j => j.RunAsync(CancellationToken.None));
-    return Results.Accepted("/api/scrape/status", new { message = "VTEX scrape enqueued (MaxiPalí + Más x Menos)" });
+    return Results.Accepted("/api/scrape/status", new { message = "VTEX scrape enqueued (Walmart + MaxiPalí + Más x Menos)" });
+});
+
+api.MapPost("/walmart", (IBackgroundJobClient bgJob) =>
+{
+    bgJob.Enqueue<ScrapeAllStoresJob>(j => j.RunAsync(CancellationToken.None));
+    return Results.Accepted("/api/scrape/status", new { message = "Walmart scrape enqueued" });
 });
 
 api.MapPost("/megasuper", (IBackgroundJobClient bgJob) =>

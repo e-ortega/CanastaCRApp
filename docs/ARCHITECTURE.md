@@ -28,6 +28,7 @@
 |---|---|---|---|---|---|
 | MaxiPalí | VTEX | Open REST | None | HttpClient | Low |
 | Más x Menos | VTEX (same platform) | Open REST | None | HttpClient | Low |
+| Walmart CR | VTEX (same platform) | Open REST | None | HttpClient | Low |
 | PriceSmart | Nuxt.js + CommerceTools | Open POST API | None | HttpClient | Low |
 | MegaSuper | Next.js SSR | JSON-LD in HTML | None | HttpClient + HTML parse | Very Low |
 | AutoMercado | Angular PWA + Firebase | Firestore (real-time) | None | Playwright | High |
@@ -43,7 +44,8 @@ GET https://www.maxipali.co.cr/api/catalog_system/pub/products/search
     ?fq=C:{categoryId}&_from=0&_to=49
     → paginated products with EAN, Price, ListPrice, brand, images, IsAvailable
 
-# Same endpoints work for masxmenos.cr — same VTEX platform
+# Same endpoints work for masxmenos.cr and walmart.co.cr — same VTEX platform
+# walmart.co.cr confirmed 2026-06-15: category tree returns 19 top-level categories
 ```
 
 **PriceSmart (CommerceTools via Nuxt proxy):**

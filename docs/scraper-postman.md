@@ -16,9 +16,15 @@ POST http://localhost:5050/api/scrape
 ```
 Returns 202 Accepted. Enqueues all scrapers (MaxiPalí, Más x Menos, MegaSuper, PriceSmart) as a Hangfire background job.
 
-### Trigger VTEX only (MaxiPalí + Más x Menos)
+### Trigger VTEX only (Walmart + MaxiPalí + Más x Menos)
 ```
 POST http://localhost:5050/api/scrape/vtex
+```
+Returns 202 Accepted.
+
+### Trigger Walmart only
+```
+POST http://localhost:5050/api/scrape/walmart
 ```
 Returns 202 Accepted.
 
