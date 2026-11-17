@@ -417,8 +417,9 @@ pwsh scripts/run.ps1 api          # macOS
 cd api && dotnet run --project src/CanastaCR.Api --launch-profile https
 # Swagger UI: https://localhost:7068/swagger
 # Seed data loads automatically on first run (15 products, prices at all 5 chains)
-# Dev credentials: admin@canastacr.com / admin123
 ```
+
+To seed a local development user, set `Seed:DevUserPassword` in User Secrets for `api/src/CanastaCR.Api` before running the API in Development with an empty user table. The seed is skipped when the setting is absent.
 
 ### API tests
 ```bash

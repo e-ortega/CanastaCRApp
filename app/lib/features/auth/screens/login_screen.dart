@@ -77,24 +77,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   onPressed: () => context.push('/register'),
                   child: const Text('¿No tienes cuenta? Regístrate'),
                 ),
-                const SizedBox(height: 24),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[100],
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey[300]!),
-                  ),
-                  child: const Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Cuenta de prueba', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey)),
-                      SizedBox(height: 4),
-                      Text('admin@canastacr.com', style: TextStyle(fontSize: 13, fontFamily: 'monospace')),
-                      Text('admin123', style: TextStyle(fontSize: 13, fontFamily: 'monospace')),
-                    ],
-                  ),
-                ),
               ],
             ),
           ),
