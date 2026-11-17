@@ -9,8 +9,6 @@ Costa Rica supermarket price comparison app. Compare prices across AutoMercado, 
 | Flutter Web | https://agreeable-desert-0fe200510.7.azurestaticapps.net |
 | API (Swagger) | https://canastacr-api-prod.azurewebsites.net/swagger |
 
-Dev account: `admin@canastacr.com` / `admin123`
-
 ---
 
 ## Architecture
@@ -156,6 +154,15 @@ To disable hooks: `.\scripts\run.ps1 hooks:uninstall`
 # Run all tests
 .\scripts\run.ps1 test
 ```
+
+To seed a local development user on a database with no existing users, configure a password before the first API run:
+
+```powershell
+dotnet user-secrets set "Seed:DevUserPassword" "<your-local-dev-password>" --project api/src/CanastaCR.Api
+.\scripts\run.ps1 api
+```
+
+The Development-only seed creates `admin@canastacr.com` using that locally stored password. No development user is seeded when the setting is absent.
 
 ---
 
@@ -364,8 +371,8 @@ Nightly web scrapers (AutoMercado priority), Hangfire jobs, price history, push 
 
 ## Seeded data
 
-On first boot, the API seeds:
+On first Development boot, the API seeds:
 - **15 common CR products** (Dos Pinos milk, Tío Pelón rice, Salsa Lizano, etc.)
 - **10 store locations** across all 5 chains
 - **~70 price reports** with realistic 2024 CRC prices
-- **Dev user** `admin@canastacr.com` / `admin123` with a sample shopping list and pantry
+- **Development user** `admin@canastacr.com` with a sample shopping list and pantry, only when `Seed:DevUserPassword` is configured in User Secrets and the database has no users

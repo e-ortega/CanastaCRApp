@@ -84,7 +84,12 @@ using (var scope = app.Services.CreateScope())
     // gets fixture data mixed in with real data again.
     if (app.Environment.IsDevelopment())
     {
-        await SeedDevUser(dbContext);
+        var devUserPassword = builder.Configuration["Seed:DevUserPassword"];
+        if (!string.IsNullOrWhiteSpace(devUserPassword))
+        {
+            await SeedDevUser(dbContext, devUserPassword);
+        }
+
         await SeedSampleData(dbContext);
     }
 }
@@ -100,7 +105,7 @@ app.MapControllers();
 
 app.Run();
 
-static async Task SeedDevUser(AppDbContext db)
+static async Task SeedDevUser(AppDbContext db, string password)
 {
     if (await db.Users.AnyAsync()) return;
     var user = new CanastaCR.Core.Entities.User
@@ -108,7 +113,7 @@ static async Task SeedDevUser(AppDbContext db)
         Id = Guid.NewGuid(),
         Email = "admin@canastacr.com",
         DisplayName = "Admin",
-        PasswordHash = BCrypt.Net.BCrypt.HashPassword("admin123"),
+        PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
         CreatedAt = DateTimeOffset.UtcNow
     };
     db.Users.Add(user);

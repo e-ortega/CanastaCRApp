@@ -21,6 +21,8 @@
 9. [Observability & Operations](#9-observability--operations)
 10. [Incident: Overnight Nightly Cron — First Real Verification](#10-incident-overnight-nightly-cron--first-real-verification)
 11. [Scraped Prices Are Chain-Level, Not Store-Level](#11-scraped-prices-are-chain-level-not-store-level)
+12. [Running the Scraper Against Azure Instead of Local](#12-running-the-scraper-against-azure-instead-of-local)
+13. [Development Seed Credentials](#13-development-seed-credentials)
 
 ---
 
@@ -678,3 +680,22 @@ Requires `az login` done beforehand and `$env:AZURE_RESOURCE_GROUP` / `$env:POST
 ### Known limitation
 
 Stale per-machine rules are never cleaned up automatically (e.g., a machine retired or permanently switching networks leaves its old rule behind). Low-risk — it only ever allows a single specific IP that's no longer in use — but worth a periodic `az postgres flexible-server firewall-rule list` glance if the rule list grows noticeably.
+
+---
+
+## 13. Development Seed Credentials
+
+**Date:** 2026-11-16
+**Status:** Implemented
+
+### Decision
+
+The Development-only API seed creates its local admin user only when `Seed:DevUserPassword` is configured and the database has no users. Developers provide that value through .NET User Secrets; the repository contains no default development password, and the login screen does not advertise a shared test account.
+
+### Why
+
+The repository is public, so a committed shared credential makes the seeded account discoverable and reusable outside an individual developer's machine. User Secrets keeps the value local, while skipping the user seed by default avoids creating a known-credential account for new development environments. The existing environment guard continues to prevent dev fixtures from being seeded outside Development.
+
+### Ruled out
+
+A repository default password or password displayed in the application would reintroduce a shared credential. Production settings, Azure resources, and deployment parameters are unchanged.
